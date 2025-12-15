@@ -1,0 +1,35 @@
+flowchart LR
+    subgraph edge["Edge Layer"]
+        MQTT[/"MQTT Broker<br/>ProveIt Virtual Factory"/]
+        SERVER["EdgeMind Server<br/>(Node.js Orchestrator)"]
+    end
+
+    subgraph cloud["Cloud & Storage Layer"]
+        INFLUX[("InfluxDB<br/>Time-Series")]
+        CLAUDE{{"Claude AI<br/>AWS Bedrock"}}
+    end
+
+    DASHBOARD["Live Dashboard<br/>WebSocket Client"]
+
+    %% Data Ingestion
+    MQTT -->|"MQTT subscribe '#'"| SERVER
+
+    %% Storage Flow
+    SERVER -->|"HTTP POST<br/>metrics"| INFLUX
+
+    %% Agentic Loop (every 30s)
+    INFLUX -.->|"Flux Query<br/>(5-min window)"| SERVER
+    SERVER -->|"Bedrock API<br/>JSON trends"| CLAUDE
+    CLAUDE -->|"JSON insights<br/>anomalies, recommendations"| SERVER
+
+    %% Real-time Output
+    SERVER -->|"WebSocket<br/>real-time updates"| DASHBOARD
+
+    %% Styling
+    style edge fill:#ECEFF1,stroke:#607D8B,stroke-width:2px
+    style cloud fill:#E3F2FD,stroke:#1976D2,stroke-width:2px
+    style SERVER fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
+    style CLAUDE fill:#00897B,stroke:#004D40,stroke-width:2px,color:#fff
+    style INFLUX fill:#5C6BC0,stroke:#303F9F,stroke-width:2px,color:#fff
+    style MQTT fill:#66BB6A,stroke:#388E3C,stroke-width:2px,color:#fff
+    style DASHBOARD fill:#42A5F5,stroke:#1565C0,stroke-width:2px,color:#fff
