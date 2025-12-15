@@ -1,8 +1,4 @@
-name: Deploy EdgeMind to AWS
-
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
+name: Deploy EdgeMind to EC2
 
 on:
   push:
@@ -12,89 +8,9 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: edgemind-prod-backend
-  ECS_SERVICE: edgemind-prod-backend
-  ECS_CLUSTER: edgemind-prod-cluster
-  CONTAINER_NAME: backend
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linter (if available)
-        run: npm run lint --if-present
-
-  deploy-infrastructure:
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    outputs:
-      ecr_uri: ${{ steps.cdk-outputs.outputs.ecr_uri }}
-      alb_dns: ${{ steps.cdk-outputs.outputs.alb_dns }}
-      bucket_name: ${{ steps.cdk-outputs.outputs.bucket_name }}
-      distribution_id: ${{ steps.cdk-outputs.outputs.distribution_id }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install CDK dependencies
-        working-directory: ./infra
-        run: |
-          pip install -r requirements.txt
-          npm install -g aws-cdk
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Update CDK app with account ID
-        working-directory: ./infra
-        run: |
-          sed -i "s/AWS_ACCOUNT = \".*\"/AWS_ACCOUNT = \"${{ secrets.AWS_ACCOUNT_ID }}\"/" app.py
-
-      - name: CDK Bootstrap (if needed)
-        working-directory: ./infra
-        run: |
-          cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ env.AWS_REGION }} || true
-
-      - name: CDK Deploy
-        working-directory: ./infra
-        run: cdk deploy --all --require-approval never --outputs-file cdk-outputs.json
-
-      - name: Extract CDK outputs
-        id: cdk-outputs
-        working-directory: ./infra
-        run: |
-          ECR_URI=$(cat cdk-outputs.json | jq -r '."edgemind-prod-backend".ECRRepositoryURI // empty')
-          ALB_DNS=$(cat cdk-outputs.json | jq -r '."edgemind-prod-backend".ALBDNSName // empty')
-          BUCKET=$(cat cdk-outputs.json | jq -r '."edgemind-prod-frontend".FrontendBucketName // empty')
-          DIST_ID=$(cat cdk-outputs.json | jq -r '."edgemind-prod-frontend".CloudFrontDistributionId // empty')
-
-          echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
-          echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
-          echo "bucket_name=$BUCKET" >> $GITHUB_OUTPUT
-          echo "distribution_id=$DIST_ID" >> $GITHUB_OUTPUT
-
-  deploy-backend:
-    needs: deploy-infrastructure
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -120,61 +36,35 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Deploy to ECS
-        run: |
-          aws ecs update-service \
-            --cluster $ECS_CLUSTER \
-            --service $ECS_SERVICE \
-            --force-new-deployment
-
-      - name: Wait for ECS deployment
-        run: |
-          aws ecs wait services-stable \
-            --cluster $ECS_CLUSTER \
-            --services $ECS_SERVICE \
-            --timeout 600
-
-  deploy-frontend:
-    needs: deploy-infrastructure
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: ECR_REGISTRY
+          script: |
+            # Login to ECR
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
 
-      - name: Deploy to S3
+            # Pull latest image
+            cd /home/ec2-user/app
+            docker compose pull
+
+            # Restart backend with new image
+            docker compose up -d --force-recreate backend
+
+            # Clean up old images
+            docker image prune -f
+
+            echo "Deployment complete!"
+
+      - name: Health check
         run: |
-          aws s3 sync . s3://${{ needs.deploy-infrastructure.outputs.bucket_name }}/ \
-            --exclude "*" \
-            --include "*.html" \
-            --include "*.css" \
-            --include "*.js" \
-            --include "*.png" \
-            --include "*.jpg" \
-            --include "*.svg" \
-            --delete
-
-      - name: Invalidate CloudFront cache
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ needs.deploy-infrastructure.outputs.distribution_id }} \
-            --paths "/*"
-
-  notify-success:
-    needs: [deploy-backend, deploy-frontend]
-    runs-on: ubuntu-latest
-    if: success()
-
-    steps:
-      - name: Deployment successful
-        run: |
-          echo "EdgeMind deployed successfully!"
-          echo "Frontend URL: Check CloudFront distribution"
-          echo "Backend Health: https://your-alb-url/health"
+          echo "Waiting for service to start..."
+          sleep 30
+          curl -f http://${{ secrets.EC2_HOST }}:3000/health || echo "Health check failed - service may still be starting"

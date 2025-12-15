@@ -428,6 +428,52 @@
             margin-top: 10px;
         }
 
+        /* Insight Tabs */
+        .insight-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .insight-tab {
+            padding: 8px 16px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .insight-tab:hover {
+            background: rgba(0, 255, 255, 0.2);
+            border-color: var(--accent-cyan);
+        }
+
+        .insight-tab.active {
+            background: rgba(0, 255, 255, 0.3);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .anomaly-item {
+            background: rgba(255, 51, 102, 0.1);
+            border-left: 3px solid var(--accent-red);
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .anomaly-item .anomaly-time {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 5px;
+        }
+
         /* Alerts */
         .alerts-panel {
             grid-column: span 6;
@@ -677,8 +723,8 @@
             <div class="card metrics">
                 <div class="card-title">OEE Score</div>
                 <div class="metric-value" style="color: var(--accent-green);" id="oee-score">--</div>
-                <div class="metric-label">Overall Equipment</div>
-                <div class="metric-change positive">Awaiting data...</div>
+                <div class="metric-label">24h Average</div>
+                <div class="metric-change positive" id="oee-status">Loading...</div>
             </div>
 
             <div class="card metrics">
@@ -717,6 +763,10 @@
                         <div class="agent-state" id="agent-state">● Initializing...</div>
                     </div>
                 </div>
+                <div class="insight-tabs">
+                    <button class="insight-tab active" onclick="filterInsights('all')">All Insights</button>
+                    <button class="insight-tab" onclick="filterInsights('anomalies')">Anomalies (<span id="anomaly-tab-count">0</span>)</button>
+                </div>
                 <div id="claude-insights-container">
                     <div class="agent-insights">
                         <div class="insight-text">
@@ -745,12 +795,12 @@
 
             <!-- Chart Panels -->
             <div class="card chart-panel">
-                <div class="card-title">Production Throughput</div>
+                <div class="card-title">Message Rate</div>
                 <canvas id="throughput-chart"></canvas>
             </div>
 
             <div class="card chart-panel">
-                <div class="card-title">Machine Health</div>
+                <div class="card-title">Data by Enterprise</div>
                 <canvas id="health-chart"></canvas>
             </div>
 
@@ -761,13 +811,6 @@
                     <div class="connection-info">
                         <span class="connection-label">MQTT Broker</span>
                         <span class="connection-value">virtualfactory.proveit.services:1883</span>
-                    </div>
-                </div>
-                <div class="connection-item">
-                    <div class="connection-indicator disconnected" id="ws-indicator"></div>
-                    <div class="connection-info">
-                        <span class="connection-label">WebSocket Backend</span>
-                        <span class="connection-value">localhost:8080</span>
                     </div>
                 </div>
                 <div class="connection-item">
@@ -812,7 +855,7 @@
         const state = {
             messages: [],
             insights: [],
-            anomalies: [],
+            anomalies: [],  // Flat list of all anomalies from insights
             stats: {
                 messageCount: 0,
                 anomalyCount: 0,
@@ -822,7 +865,9 @@
             uniqueTopics: new Set(),
             messageRateHistory: [],
             topicCounts: {},
-            selectedFactory: 'ALL'  // 'ALL', 'A', 'B', or 'C'
+            enterpriseCounts: { 'Enterprise A': 0, 'Enterprise B': 0, 'Enterprise C': 0 },
+            selectedFactory: 'ALL',  // 'ALL', 'A', 'B', or 'C'
+            insightFilter: 'all'  // 'all' or 'anomalies'
         };
 
         // Initialize Charts
@@ -868,20 +913,18 @@
                 }
             });
 
-            // Machine Health Chart (Doughnut Chart)
+            // Enterprise Distribution Chart (Doughnut Chart)
             const healthCtx = document.getElementById('health-chart').getContext('2d');
             window.healthChart = new Chart(healthCtx, {
                 type: 'doughnut',
                 data: {
-                    labels: [],
+                    labels: ['Enterprise A', 'Enterprise B', 'Enterprise C'],
                     datasets: [{
-                        data: [],
+                        data: [0, 0, 0],
                         backgroundColor: [
-                            'rgba(0, 255, 255, 0.8)',
-                            'rgba(255, 0, 255, 0.8)',
-                            'rgba(255, 191, 0, 0.8)',
-                            'rgba(0, 255, 136, 0.8)',
-                            'rgba(255, 51, 102, 0.8)'
+                            'rgba(0, 255, 255, 0.8)',   // Cyan for A
+                            'rgba(255, 0, 255, 0.8)',   // Magenta for B
+                            'rgba(255, 191, 0, 0.8)'    // Amber for C
                         ],
                         borderColor: '#141824',
                         borderWidth: 2
@@ -895,7 +938,7 @@
                             position: 'right',
                             labels: {
                                 color: '#e8e8e8',
-                                font: { size: 10 }
+                                font: { size: 11 }
                             }
                         }
                     }
@@ -927,18 +970,13 @@
                 window.throughputChart.update('none'); // Update without animation for performance
             }
 
-            // Update health chart with topic distribution
-            if (window.healthChart && Object.keys(state.topicCounts).length > 0) {
-                const sortedTopics = Object.entries(state.topicCounts)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 5); // Top 5 topics
-
-                window.healthChart.data.labels = sortedTopics.map(([topic]) => {
-                    // Shorten topic names for display
-                    const parts = topic.split('/');
-                    return parts.length > 2 ? `.../${parts[parts.length - 1]}` : topic;
-                });
-                window.healthChart.data.datasets[0].data = sortedTopics.map(([, count]) => count);
+            // Update enterprise distribution chart
+            if (window.healthChart) {
+                window.healthChart.data.datasets[0].data = [
+                    state.enterpriseCounts['Enterprise A'],
+                    state.enterpriseCounts['Enterprise B'],
+                    state.enterpriseCounts['Enterprise C']
+                ];
                 window.healthChart.update('none');
             }
         }
@@ -1041,18 +1079,11 @@
                     // Track unique topics
                     state.uniqueTopics.add(message.data.topic);
 
-                    // Track topic counts for health chart
-                    if (!state.topicCounts[message.data.topic]) {
-                        state.topicCounts[message.data.topic] = 0;
-                    }
-                    state.topicCounts[message.data.topic]++;
-
-                    // Check for OEE data
-                    if (message.data.topic.toLowerCase().includes('oee')) {
-                        const value = parseFloat(message.data.payload);
-                        if (!isNaN(value)) {
-                            state.latestOee = value;
-                        }
+                    // Track enterprise counts for distribution chart
+                    const entMatch = topic.match(/^(Enterprise [ABC])\//i);
+                    if (entMatch) {
+                        const enterprise = entMatch[1];
+                        state.enterpriseCounts[enterprise] = (state.enterpriseCounts[enterprise] || 0) + 1;
                     }
 
                     addMQTTMessageToStream(message.data);
@@ -1085,7 +1116,6 @@
         // Update connection status indicator
         function updateConnectionStatus(connected) {
             const badge = document.getElementById('live-badge');
-            const wsIndicator = document.getElementById('ws-indicator');
             const mqttIndicator = document.getElementById('mqtt-indicator');
             const claudeIndicator = document.getElementById('claude-indicator');
             const dataIndicator = document.getElementById('data-indicator');
@@ -1096,7 +1126,6 @@
                 badge.style.color = 'var(--accent-green)';
                 badge.style.background = 'rgba(0, 255, 136, 0.2)';
 
-                wsIndicator.classList.remove('disconnected');
                 mqttIndicator.classList.remove('disconnected');
                 claudeIndicator.classList.remove('disconnected');
                 dataIndicator.classList.remove('disconnected');
@@ -1106,7 +1135,6 @@
                 badge.style.color = 'var(--accent-red)';
                 badge.style.background = 'rgba(255, 0, 0, 0.2)';
 
-                wsIndicator.classList.add('disconnected');
                 mqttIndicator.classList.add('disconnected');
                 claudeIndicator.classList.add('disconnected');
                 dataIndicator.classList.add('disconnected');
@@ -1151,6 +1179,29 @@
 
         // Add Claude insight to the AI agent panel
         function addClaudeInsight(insight) {
+            // Extract anomalies from insight
+            if (insight.anomalies && Array.isArray(insight.anomalies)) {
+                insight.anomalies.forEach(anomalyText => {
+                    state.anomalies.push({
+                        text: anomalyText,
+                        timestamp: insight.timestamp,
+                        severity: insight.severity
+                    });
+                });
+                // Keep only last 50 anomalies
+                while (state.anomalies.length > 50) {
+                    state.anomalies.shift();
+                }
+                // Update anomaly tab counter
+                const tabCount = document.getElementById('anomaly-tab-count');
+                if (tabCount) {
+                    tabCount.textContent = state.anomalies.length;
+                }
+            }
+
+            // Only add to container if we're in 'all' view
+            if (state.insightFilter !== 'all') return;
+
             const container = document.getElementById('claude-insights-container');
             if (!container) return;
 
@@ -1169,10 +1220,15 @@
             const insightText = insight.summary || insight.insight || 'No insight available';
             const dataInfo = insight.dataPoints ? `${insight.dataPoints} data points` : `${insight.messagesAnalyzed || 0} messages`;
 
+            // Show anomaly count in insight if present
+            const anomalyInfo = insight.anomalies && insight.anomalies.length > 0
+                ? `<span style="color: var(--accent-red)">⚠ ${insight.anomalies.length} anomalies</span> • `
+                : '';
+
             insightEl.innerHTML = `
                 <div class="insight-text">${insightText}</div>
                 <div class="insight-meta">
-                    Confidence: ${insight.confidence || 'N/A'} •
+                    ${anomalyInfo}Confidence: ${insight.confidence || 'N/A'} •
                     Priority: ${insight.severity} •
                     Analyzed ${dataInfo} •
                     ${new Date(insight.timestamp).toLocaleTimeString()}
@@ -1195,22 +1251,16 @@
                 msgCount.textContent = state.stats.messageCount.toLocaleString();
             }
 
-            // Update OEE score
-            const oeeScore = document.getElementById('oee-score');
-            if (oeeScore && state.latestOee !== null) {
-                oeeScore.textContent = state.latestOee.toFixed(1) + '%';
-            }
-
             // Update active sensors count
             const activeSensors = document.getElementById('active-sensors');
             if (activeSensors) {
                 activeSensors.textContent = state.uniqueTopics.size.toLocaleString();
             }
 
-            // Update anomaly count
+            // Update anomaly count from state.anomalies
             const anomalyCount = document.getElementById('anomaly-count');
             if (anomalyCount) {
-                anomalyCount.textContent = state.stats.anomalyCount;
+                anomalyCount.textContent = state.anomalies.length;
             }
         }
 
@@ -1287,11 +1337,10 @@
             });
             event.target.closest('.factory-btn').classList.add('active');
 
-            // Clear filtered data and reset displays
+            // Clear filtered data but preserve sensor count
             state.messages = [];
-            state.uniqueTopics.clear();
-            state.topicCounts = {};
-            state.latestOee = null;
+            // Don't clear uniqueTopics - keep cumulative sensor count
+            state.enterpriseCounts = { 'Enterprise A': 0, 'Enterprise B': 0, 'Enterprise C': 0 };
 
             // Reset charts
             if (window.throughputChart) {
@@ -1300,15 +1349,92 @@
                 window.throughputChart.update();
             }
             if (window.healthChart) {
-                window.healthChart.data.labels = [];
-                window.healthChart.data.datasets[0].data = [];
+                window.healthChart.data.datasets[0].data = [0, 0, 0];
                 window.healthChart.update();
             }
+
+            // Fetch fresh OEE for selected enterprise
+            fetchOEE();
 
             // Update metrics display
             updateMetrics();
 
             console.log('Filtering by factory:', factory);
+        }
+
+        // Fetch OEE from API (24h average)
+        async function fetchOEE() {
+            try {
+                const enterprise = state.selectedFactory;
+                const response = await fetch(`/api/oee?enterprise=${enterprise}`);
+                const data = await response.json();
+
+                const oeeScore = document.getElementById('oee-score');
+                const oeeStatus = document.getElementById('oee-status');
+
+                if (data.average !== null) {
+                    oeeScore.textContent = data.average.toFixed(1) + '%';
+                    oeeStatus.textContent = `${data.period} avg • ${enterprise === 'ALL' ? 'All' : enterprise}`;
+                    oeeStatus.className = 'metric-change positive';
+                } else {
+                    oeeScore.textContent = '--';
+                    oeeStatus.textContent = 'No OEE data available';
+                    oeeStatus.className = 'metric-change';
+                }
+            } catch (error) {
+                console.error('Failed to fetch OEE:', error);
+                document.getElementById('oee-status').textContent = 'API error';
+            }
+        }
+
+        // Filter insights by type
+        function filterInsights(filterType) {
+            state.insightFilter = filterType;
+
+            // Update tab styling
+            document.querySelectorAll('.insight-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Re-render insights
+            const container = document.getElementById('claude-insights-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (filterType === 'anomalies') {
+                // Show only anomalies
+                if (state.anomalies.length === 0) {
+                    container.innerHTML = `
+                        <div class="agent-insights">
+                            <div class="insight-text">No anomalies detected yet.</div>
+                            <div class="insight-meta">Claude analyzes trends every 30 seconds</div>
+                        </div>
+                    `;
+                } else {
+                    state.anomalies.forEach(anomaly => {
+                        const el = document.createElement('div');
+                        el.className = 'anomaly-item';
+                        el.innerHTML = `
+                            <div>${anomaly.text}</div>
+                            <div class="anomaly-time">${new Date(anomaly.timestamp).toLocaleTimeString()}</div>
+                        `;
+                        container.appendChild(el);
+                    });
+                }
+            } else {
+                // Show all insights
+                if (state.insights.length === 0) {
+                    container.innerHTML = `
+                        <div class="agent-insights">
+                            <div class="insight-text">Waiting for data to analyze...</div>
+                            <div class="insight-meta">Status: Standby</div>
+                        </div>
+                    `;
+                } else {
+                    state.insights.forEach(insight => addClaudeInsight(insight));
+                }
+            }
         }
 
         // Initialize connection on page load
@@ -1321,8 +1447,14 @@
             // Then connect to backend
             connectWebSocket();
 
+            // Fetch initial OEE
+            fetchOEE();
+
             // Update message rate every second
             setInterval(updateMessageRate, 1000);
+
+            // Refresh OEE every 30 seconds
+            setInterval(fetchOEE, 30000);
         });
 
         // Expose askClaudeQuestion globally

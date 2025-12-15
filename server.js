@@ -434,6 +434,70 @@ app.get('/api/trends', async (req, res) => {
   res.json(trends);
 });
 
+// API endpoint for 24h OEE aggregate
+app.get('/api/oee', async (req, res) => {
+  try {
+    const enterprise = req.query.enterprise || 'ALL';
+    const oeeData = await queryOEE(enterprise);
+    res.json(oeeData);
+  } catch (error) {
+    console.error('OEE query error:', error);
+    res.status(500).json({ error: 'Failed to query OEE data' });
+  }
+});
+
+async function queryOEE(enterprise) {
+  // Query for OEE values over the last 24 hours
+  // OEE topics typically contain 'oee' in the measurement name
+  let enterpriseFilter = '';
+  if (enterprise !== 'ALL') {
+    enterpriseFilter = `|> filter(fn: (r) => r.enterprise == "Enterprise ${enterprise}")`;
+  }
+
+  const fluxQuery = `
+    from(bucket: "${CONFIG.influxdb.bucket}")
+      |> range(start: -24h)
+      |> filter(fn: (r) => r._field == "value" and r._value > 0)
+      |> filter(fn: (r) => r._measurement =~ /oee/i or r.full_topic =~ /oee/i)
+      ${enterpriseFilter}
+      |> group()
+      |> mean()
+      |> yield(name: "mean_oee")
+  `;
+
+  return new Promise((resolve) => {
+    let avgOee = null;
+    let count = 0;
+
+    queryApi.queryRows(fluxQuery, {
+      next(row, tableMeta) {
+        const o = tableMeta.toObject(row);
+        if (o._value !== undefined) {
+          // Normalize OEE - raw values may be scaled (e.g., 85000 = 85%)
+          let value = o._value;
+          if (value > 100) {
+            value = value / 1000;
+          }
+          avgOee = Math.min(100, Math.max(0, value));
+          count++;
+        }
+      },
+      error(error) {
+        console.error('InfluxDB OEE query error:', error);
+        resolve({ average: null, period: '24h', enterprise, error: error.message });
+      },
+      complete() {
+        resolve({
+          average: avgOee !== null ? parseFloat(avgOee.toFixed(1)) : null,
+          period: '24h',
+          enterprise,
+          dataPoints: count
+        });
+      }
+    });
+  });
+}
+
 // Start HTTP server
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
