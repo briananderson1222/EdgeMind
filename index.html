@@ -694,6 +694,159 @@
             max-height: 380px;
         }
 
+        /* Production Heatmap */
+        .heatmap-container {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 380px;
+        }
+
+        .heatmap-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .heatmap-container::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .heatmap-container::-webkit-scrollbar-thumb {
+            background: var(--accent-cyan);
+            border-radius: 4px;
+        }
+
+        .enterprise-group {
+            margin-bottom: 20px;
+        }
+
+        .enterprise-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            background: rgba(0, 255, 255, 0.1);
+            border-left: 4px solid var(--accent-cyan);
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+        }
+
+        .enterprise-header.healthy {
+            background: rgba(0, 255, 136, 0.1);
+            border-left-color: var(--accent-green);
+        }
+
+        .enterprise-header.warning {
+            background: rgba(255, 191, 0, 0.1);
+            border-left-color: var(--accent-amber);
+        }
+
+        .enterprise-header.critical {
+            background: rgba(255, 51, 102, 0.1);
+            border-left-color: var(--accent-red);
+        }
+
+        .enterprise-name {
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+
+        .enterprise-oee {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .enterprise-oee.healthy {
+            color: var(--accent-green);
+        }
+
+        .enterprise-oee.warning {
+            color: var(--accent-amber);
+        }
+
+        .enterprise-oee.critical {
+            color: var(--accent-red);
+        }
+
+        .sites-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+            padding-left: 20px;
+        }
+
+        .site-card {
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .site-card.healthy {
+            border-color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .site-card.warning {
+            border-color: var(--accent-amber);
+            background: rgba(255, 191, 0, 0.05);
+        }
+
+        .site-card.critical {
+            border-color: var(--accent-red);
+            background: rgba(255, 51, 102, 0.05);
+        }
+
+        .site-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 255, 255, 0.3);
+        }
+
+        .site-name {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .site-oee {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.3rem;
+            font-weight: 900;
+        }
+
+        .site-oee.healthy {
+            color: var(--accent-green);
+        }
+
+        .site-oee.warning {
+            color: var(--accent-amber);
+        }
+
+        .site-oee.critical {
+            color: var(--accent-red);
+        }
+
+        .site-status {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+
+        .heatmap-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            font-family: 'Share Tech Mono', monospace;
+            color: var(--text-dim);
+        }
+
         .chart-placeholder {
             width: 100%;
             height: 100%;
@@ -995,13 +1148,15 @@
 
             <!-- Chart Panels -->
             <div class="card chart-panel">
-                <div class="card-title">Message Rate</div>
-                <canvas id="throughput-chart"></canvas>
+                <div class="card-title">OEE by Enterprise</div>
+                <canvas id="oee-breakdown-chart"></canvas>
             </div>
 
             <div class="card chart-panel">
-                <div class="card-title">Data by Enterprise</div>
-                <canvas id="health-chart"></canvas>
+                <div class="card-title">Production Heatmap</div>
+                <div class="heatmap-container" id="production-heatmap">
+                    <div class="heatmap-loading">Loading factory status...</div>
+                </div>
             </div>
 
             <!-- Connection Status -->
@@ -1072,114 +1227,145 @@
         };
 
         // Initialize Charts
-        window.throughputChart = null;
-        window.healthChart = null;
+        window.oeeBreakdownChart = null;
 
         function initializeCharts() {
-            // Production Throughput Chart (Line Chart)
-            const throughputCtx = document.getElementById('throughput-chart').getContext('2d');
-            window.throughputChart = new Chart(throughputCtx, {
-                type: 'line',
+            // OEE Breakdown Chart (Horizontal Bar Chart)
+            const oeeBreakdownCtx = document.getElementById('oee-breakdown-chart').getContext('2d');
+            window.oeeBreakdownChart = new Chart(oeeBreakdownCtx, {
+                type: 'bar',
                 data: {
-                    labels: [],
+                    labels: ['Enterprise A', 'Enterprise B', 'Enterprise C'],
                     datasets: [{
-                        label: 'Messages/sec',
-                        data: [],
-                        borderColor: 'rgba(0, 255, 255, 1)',
-                        backgroundColor: 'rgba(0, 255, 255, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        fill: true
+                        label: 'OEE %',
+                        data: [0, 0, 0],
+                        backgroundColor: [
+                            'rgba(0, 255, 255, 0.6)',   // Cyan for A
+                            'rgba(255, 0, 255, 0.6)',   // Magenta for B
+                            'rgba(255, 191, 0, 0.6)'    // Amber for C
+                        ],
+                        borderColor: [
+                            'rgba(0, 255, 255, 1)',
+                            'rgba(255, 0, 255, 1)',
+                            'rgba(255, 191, 0, 1)'
+                        ],
+                        borderWidth: 2
                     }]
                 },
                 options: {
+                    indexAxis: 'y',  // Horizontal bars
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            labels: { color: '#e8e8e8' }
+                            display: false
                         }
                     },
                     scales: {
                         x: {
                             ticks: { color: '#6b7280' },
-                            grid: { color: 'rgba(0, 255, 255, 0.1)' }
+                            grid: { color: 'rgba(0, 255, 255, 0.1)' },
+                            beginAtZero: true,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'OEE %',
+                                color: '#e8e8e8'
+                            }
                         },
                         y: {
-                            ticks: { color: '#6b7280' },
-                            grid: { color: 'rgba(0, 255, 255, 0.1)' },
-                            beginAtZero: true
-                        }
-                    }
-                }
-            });
-
-            // Enterprise Distribution Chart (Doughnut Chart)
-            const healthCtx = document.getElementById('health-chart').getContext('2d');
-            window.healthChart = new Chart(healthCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Enterprise A', 'Enterprise B', 'Enterprise C'],
-                    datasets: [{
-                        data: [0, 0, 0],
-                        backgroundColor: [
-                            'rgba(0, 255, 255, 0.8)',   // Cyan for A
-                            'rgba(255, 0, 255, 0.8)',   // Magenta for B
-                            'rgba(255, 191, 0, 0.8)'    // Amber for C
-                        ],
-                        borderColor: '#141824',
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: {
-                                color: '#e8e8e8',
-                                font: { size: 11 }
-                            }
+                            ticks: { color: '#e8e8e8', font: { size: 14 } },
+                            grid: { display: false }
                         }
                     }
                 }
             });
         }
 
-        // Update charts with new data
+        // Update charts with new data (removed - no longer needed)
         function updateCharts() {
-            // Update throughput chart with message rate history
-            if (window.throughputChart && state.messageRateHistory.length > 0) {
-                const now = new Date();
-                const timeLabel = now.toLocaleTimeString('en-US', {
-                    hour12: false,
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
+            // Charts are updated via their own fetch functions
+        }
+
+        // Fetch OEE breakdown and update chart
+        async function fetchOEEBreakdown() {
+            try {
+                const response = await fetch('/api/oee/breakdown');
+                const data = await response.json();
+
+                if (window.oeeBreakdownChart && data.data) {
+                    // Update chart with breakdown data
+                    const oeeValues = [
+                        data.data['Enterprise A']?.oee || 0,
+                        data.data['Enterprise B']?.oee || 0,
+                        data.data['Enterprise C']?.oee || 0
+                    ];
+
+                    window.oeeBreakdownChart.data.datasets[0].data = oeeValues;
+                    window.oeeBreakdownChart.update('none');
+                }
+            } catch (error) {
+                console.error('Failed to fetch OEE breakdown:', error);
+            }
+        }
+
+        // Fetch factory status and render production heatmap
+        async function fetchFactoryStatus() {
+            try {
+                const response = await fetch('/api/factory/status');
+                const data = await response.json();
+
+                if (data.enterprises) {
+                    renderProductionHeatmap(data.enterprises);
+                }
+            } catch (error) {
+                console.error('Failed to fetch factory status:', error);
+                const container = document.getElementById('production-heatmap');
+                if (container) {
+                    container.innerHTML = '<div class="heatmap-loading">Failed to load factory status</div>';
+                }
+            }
+        }
+
+        // Render the production heatmap with enterprise and site hierarchy
+        function renderProductionHeatmap(enterprises) {
+            const container = document.getElementById('production-heatmap');
+            if (!container) return;
+
+            if (enterprises.length === 0) {
+                container.innerHTML = '<div class="heatmap-loading">No factory data available</div>';
+                return;
+            }
+
+            let html = '';
+
+            enterprises.forEach(enterprise => {
+                html += `
+                    <div class="enterprise-group">
+                        <div class="enterprise-header ${enterprise.status}">
+                            <div class="enterprise-name">${enterprise.name}</div>
+                            <div class="enterprise-oee ${enterprise.status}">${enterprise.oee}%</div>
+                        </div>
+                        <div class="sites-grid">
+                `;
+
+                enterprise.sites.forEach(site => {
+                    html += `
+                        <div class="site-card ${site.status}">
+                            <div class="site-name">${site.name}</div>
+                            <div class="site-oee ${site.status}">${site.oee}%</div>
+                            <div class="site-status">${site.status}</div>
+                        </div>
+                    `;
                 });
 
-                window.throughputChart.data.labels.push(timeLabel);
-                window.throughputChart.data.datasets[0].data.push(messageRate);
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
 
-                // Keep only last 20 data points
-                if (window.throughputChart.data.labels.length > 20) {
-                    window.throughputChart.data.labels.shift();
-                    window.throughputChart.data.datasets[0].data.shift();
-                }
-
-                window.throughputChart.update('none'); // Update without animation for performance
-            }
-
-            // Update enterprise distribution chart
-            if (window.healthChart) {
-                window.healthChart.data.datasets[0].data = [
-                    state.enterpriseCounts['Enterprise A'],
-                    state.enterpriseCounts['Enterprise B'],
-                    state.enterpriseCounts['Enterprise C']
-                ];
-                window.healthChart.update('none');
-            }
+            container.innerHTML = html;
         }
 
         // Connect to WebSocket backend
@@ -1379,7 +1565,8 @@
             `;
 
             // Check if user is at bottom before adding new message
-            const isAtBottom = stream.scrollHeight - stream.scrollTop <= stream.clientHeight + 50;
+            // Use tighter threshold: within 10px = user is at bottom
+            const isAtBottom = stream.scrollHeight - stream.scrollTop <= stream.clientHeight + 10;
 
             stream.appendChild(line);
 
@@ -1562,18 +1749,14 @@
             state.enterpriseCounts = { 'Enterprise A': 0, 'Enterprise B': 0, 'Enterprise C': 0 };
 
             // Reset charts
-            if (window.throughputChart) {
-                window.throughputChart.data.labels = [];
-                window.throughputChart.data.datasets[0].data = [];
-                window.throughputChart.update();
-            }
             if (window.healthChart) {
                 window.healthChart.data.datasets[0].data = [0, 0, 0];
                 window.healthChart.update();
             }
 
-            // Fetch fresh OEE for selected enterprise
+            // Fetch fresh OEE and breakdown for selected enterprise
             fetchOEE();
+            fetchOEEBreakdown();
 
             // Update metrics display
             updateMetrics();
@@ -1768,14 +1951,18 @@
             // Then connect to backend
             connectWebSocket();
 
-            // Fetch initial OEE
+            // Fetch initial OEE, breakdown, and factory status
             fetchOEE();
+            fetchOEEBreakdown();
+            fetchFactoryStatus();
 
             // Update message rate every second
             setInterval(updateMessageRate, 1000);
 
-            // Refresh OEE every 30 seconds
+            // Refresh OEE, breakdown, and factory status every 30 seconds
             setInterval(fetchOEE, 30000);
+            setInterval(fetchOEEBreakdown, 30000);
+            setInterval(fetchFactoryStatus, 30000);
         });
 
         // Expose askClaudeQuestion globally
