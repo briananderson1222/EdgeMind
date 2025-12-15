@@ -1194,6 +1194,25 @@
     <script>
         // REAL IMPLEMENTATION - Connects to actual backend
 
+        // Cheeky messages when insights are disabled
+        const SLEEPING_AGENT_MESSAGES = [
+            "The AI is taking a power nap. Data collection continues.",
+            "Agent on coffee break. Factory still running smoothly.",
+            "Currently in 'observe mode' - watching, not chatting.",
+            "The copilot stepped out. Left the autopilot on.",
+            "Shhh... the neural networks are dreaming of electric sheep.",
+            "Agent is meditating on your data. Silently.",
+            "Taking a byte out of downtime. Analysis paused.",
+            "The AI went to grab a byte to eat. Back soon.",
+            "Running in stealth mode. All sensors, no chatter.",
+            "Copilot is AFK. Factory keeps on trucking.",
+            "Brain on standby. Eyes still on the sensors.",
+            "The algorithm is touching grass. Data still flowing.",
+            "Agent is buffering... just kidding, insights are off.",
+            "Currently vibing in low-power mode.",
+            "The AI took a personal day. Machines don't judge."
+        ];
+
         // Dynamic WebSocket URL - matches page protocol (ws:// for http, wss:// for https)
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const WS_URL = window.location.hostname === 'localhost'
@@ -1441,6 +1460,36 @@
                     state.anomalies = message.data.recentAnomalies || [];
                     state.stats = message.data.stats || state.stats;
                     updateUI();
+
+                    // Show sleeping agent message if insights are disabled
+                    if (message.data.insightsEnabled === false) {
+                        const copilotContainer = document.getElementById('claude-insights-container');
+                        if (copilotContainer) {
+                            const randomMsg = SLEEPING_AGENT_MESSAGES[Math.floor(Math.random() * SLEEPING_AGENT_MESSAGES.length)];
+                            const sleepingDiv = document.createElement('div');
+                            sleepingDiv.className = 'agent-insights';
+                            sleepingDiv.style.borderLeftColor = 'var(--accent-amber)';
+                            sleepingDiv.innerHTML = `
+                                <div class="insight-text" style="opacity: 0.85; font-style: italic;">
+                                    😴 ${randomMsg}
+                                </div>
+                                <div class="insight-meta">
+                                    AI Insights: Disabled • MQTT data collection active
+                                </div>
+                            `;
+                            copilotContainer.innerHTML = '';
+                            copilotContainer.appendChild(sleepingDiv);
+                        }
+
+                        // Update agent state
+                        const agentState = document.getElementById('agent-state');
+                        if (agentState) {
+                            agentState.textContent = '● Data collection only (insights disabled)';
+                        }
+                    }
+
+                    // Fetch persistent measurement count from server schema cache
+                    fetchActiveSensorCount();
                     break;
 
                 case 'mqtt_message':
@@ -1463,8 +1512,9 @@
                         state.messages.shift();
                     }
 
-                    // Track unique topics
-                    state.uniqueTopics.add(message.data.topic);
+                    // Track unique measurements (not full topics, to match server schema)
+                    const measurement = topicToMeasurement(message.data.topic);
+                    state.uniqueTopics.add(measurement);
 
                     // Track enterprise counts for distribution chart
                     const entMatch = topic.match(/^(Enterprise [ABC])\//i);
@@ -1646,6 +1696,40 @@
             // Keep only last 5 insights visible
             while (container.children.length > 5) {
                 container.removeChild(container.lastChild);
+            }
+        }
+
+        // Extract measurement name from MQTT topic (matches server logic)
+        function topicToMeasurement(topic) {
+            const parts = topic.split('/');
+            if (parts.length >= 2) {
+                return parts.slice(-2).join('_').replace(/[^a-zA-Z0-9_]/g, '_');
+            }
+            return topic.replace(/[^a-zA-Z0-9_]/g, '_');
+        }
+
+        // Fetch active sensor count from server schema cache
+        async function fetchActiveSensorCount() {
+            try {
+                const response = await fetch('/api/schema/measurements');
+                const data = await response.json();
+
+                if (data.measurements && Array.isArray(data.measurements)) {
+                    // Pre-populate uniqueTopics Set with known measurements from server
+                    // This preserves the persistent count across page loads
+                    data.measurements.forEach(measurement => {
+                        state.uniqueTopics.add(measurement.name);
+                    });
+
+                    // Update display
+                    const activeSensors = document.getElementById('active-sensors');
+                    if (activeSensors) {
+                        activeSensors.textContent = state.uniqueTopics.size.toLocaleString();
+                    }
+                    console.log(`📊 Loaded ${data.measurements.length} active sensors from schema cache`);
+                }
+            } catch (error) {
+                console.error('Failed to fetch active sensor count:', error);
             }
         }
 

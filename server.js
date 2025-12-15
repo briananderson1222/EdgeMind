@@ -1647,7 +1647,8 @@ wss.on('connection', (ws) => {
       recentMessages: factoryState.messages.slice(-20),
       recentInsights: factoryState.trendInsights.slice(-5),
       recentAnomalies: factoryState.anomalies.slice(-10),
-      stats: factoryState.stats
+      stats: factoryState.stats,
+      insightsEnabled: !CONFIG.disableInsights
     }
   }));
 
