@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProveIt! Factory Intelligence - LIVE</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --bg-dark: #0a0e1a;
@@ -645,7 +646,11 @@
             <div class="card factory-overview">
                 <div class="card-title">Virtual Factory Selection</div>
                 <div class="factory-selector">
-                    <div class="factory-btn active" onclick="selectFactory('A')">
+                    <div class="factory-btn active" onclick="selectFactory('ALL')">
+                        <div>ALL ENTERPRISES</div>
+                        <div class="factory-status">Combined View • Online</div>
+                    </div>
+                    <div class="factory-btn" onclick="selectFactory('A')">
                         <div>ENTERPRISE A</div>
                         <div class="factory-status">Glass Manufacturing • Online</div>
                     </div>
@@ -740,18 +745,12 @@
             <!-- Chart Panels -->
             <div class="card chart-panel">
                 <div class="card-title">Production Throughput</div>
-                <div class="chart-placeholder">
-                    <div class="chart-icon">📊</div>
-                    <div class="chart-label">Live Chart Visualization</div>
-                </div>
+                <canvas id="throughput-chart"></canvas>
             </div>
 
             <div class="card chart-panel">
                 <div class="card-title">Machine Health</div>
-                <div class="chart-placeholder">
-                    <div class="chart-icon">📈</div>
-                    <div class="chart-label">Real-time Analytics</div>
-                </div>
+                <canvas id="health-chart"></canvas>
             </div>
 
             <!-- Connection Status -->
@@ -798,7 +797,7 @@
 
         // Dynamic WebSocket URL - uses CloudFront/ALB in production, localhost in development
         const WS_URL = window.location.hostname === 'localhost'
-            ? 'ws://localhost:8080'
+            ? 'ws://localhost:3000/ws'
             : `wss://${window.location.host}/ws`;
         let ws = null;
         let reconnectInterval = null;
@@ -816,8 +815,131 @@
                 messageCount: 0,
                 anomalyCount: 0,
                 lastUpdate: null
-            }
+            },
+            latestOee: null,
+            uniqueTopics: new Set(),
+            messageRateHistory: [],
+            topicCounts: {},
+            selectedFactory: 'ALL'  // 'ALL', 'A', 'B', or 'C'
         };
+
+        // Initialize Charts
+        window.throughputChart = null;
+        window.healthChart = null;
+
+        function initializeCharts() {
+            // Production Throughput Chart (Line Chart)
+            const throughputCtx = document.getElementById('throughput-chart').getContext('2d');
+            window.throughputChart = new Chart(throughputCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Messages/sec',
+                        data: [],
+                        borderColor: 'rgba(0, 255, 255, 1)',
+                        backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#e8e8e8' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#6b7280' },
+                            grid: { color: 'rgba(0, 255, 255, 0.1)' }
+                        },
+                        y: {
+                            ticks: { color: '#6b7280' },
+                            grid: { color: 'rgba(0, 255, 255, 0.1)' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Machine Health Chart (Doughnut Chart)
+            const healthCtx = document.getElementById('health-chart').getContext('2d');
+            window.healthChart = new Chart(healthCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            'rgba(0, 255, 255, 0.8)',
+                            'rgba(255, 0, 255, 0.8)',
+                            'rgba(255, 191, 0, 0.8)',
+                            'rgba(0, 255, 136, 0.8)',
+                            'rgba(255, 51, 102, 0.8)'
+                        ],
+                        borderColor: '#141824',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: '#e8e8e8',
+                                font: { size: 10 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update charts with new data
+        function updateCharts() {
+            // Update throughput chart with message rate history
+            if (window.throughputChart && state.messageRateHistory.length > 0) {
+                const now = new Date();
+                const timeLabel = now.toLocaleTimeString('en-US', {
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+
+                window.throughputChart.data.labels.push(timeLabel);
+                window.throughputChart.data.datasets[0].data.push(messageRate);
+
+                // Keep only last 20 data points
+                if (window.throughputChart.data.labels.length > 20) {
+                    window.throughputChart.data.labels.shift();
+                    window.throughputChart.data.datasets[0].data.shift();
+                }
+
+                window.throughputChart.update('none'); // Update without animation for performance
+            }
+
+            // Update health chart with topic distribution
+            if (window.healthChart && Object.keys(state.topicCounts).length > 0) {
+                const sortedTopics = Object.entries(state.topicCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5); // Top 5 topics
+
+                window.healthChart.data.labels = sortedTopics.map(([topic]) => {
+                    // Shorten topic names for display
+                    const parts = topic.split('/');
+                    return parts.length > 2 ? `.../${parts[parts.length - 1]}` : topic;
+                });
+                window.healthChart.data.datasets[0].data = sortedTopics.map(([, count]) => count);
+                window.healthChart.update('none');
+            }
+        }
 
         // Connect to WebSocket backend
         function connectWebSocket() {
@@ -876,7 +998,18 @@
             switch (message.type) {
                 case 'initial_state':
                     // Initial data when connecting
-                    state.messages = message.data.recentMessages || [];
+                    let messages = message.data.recentMessages || [];
+
+                    // Filter by selected enterprise
+                    if (state.selectedFactory !== 'ALL') {
+                        messages = messages.filter(msg => {
+                            const topic = msg.topic || '';
+                            const match = topic.match(/^Enterprise ([ABC])\//i);
+                            return match && match[1].toUpperCase() === state.selectedFactory;
+                        });
+                    }
+
+                    state.messages = messages;
                     state.insights = message.data.recentInsights || [];
                     state.anomalies = message.data.recentAnomalies || [];
                     state.stats = message.data.stats || state.stats;
@@ -885,12 +1018,41 @@
 
                 case 'mqtt_message':
                     // Real-time MQTT message
+                    const topic = message.data.topic || '';
+
+                    // Filter by selected enterprise
+                    if (state.selectedFactory !== 'ALL') {
+                        // Topics start with "Enterprise A/", "Enterprise B/", or "Enterprise C/"
+                        const enterpriseMatch = topic.match(/^Enterprise ([ABC])\//i);
+                        if (!enterpriseMatch || enterpriseMatch[1].toUpperCase() !== state.selectedFactory) {
+                            return; // Skip messages not matching filter
+                        }
+                    }
+
                     state.messages.push(message.data);
                     state.stats.messageCount++;
                     messagesSinceLastRate++;
                     if (state.messages.length > 100) {
                         state.messages.shift();
                     }
+
+                    // Track unique topics
+                    state.uniqueTopics.add(message.data.topic);
+
+                    // Track topic counts for health chart
+                    if (!state.topicCounts[message.data.topic]) {
+                        state.topicCounts[message.data.topic] = 0;
+                    }
+                    state.topicCounts[message.data.topic]++;
+
+                    // Check for OEE data
+                    if (message.data.topic.toLowerCase().includes('oee')) {
+                        const value = parseFloat(message.data.payload);
+                        if (!isNaN(value)) {
+                            state.latestOee = value;
+                        }
+                    }
+
                     addMQTTMessageToStream(message.data);
                     updateMetrics();
                     break;
@@ -1031,6 +1193,18 @@
                 msgCount.textContent = state.stats.messageCount.toLocaleString();
             }
 
+            // Update OEE score
+            const oeeScore = document.getElementById('oee-score');
+            if (oeeScore && state.latestOee !== null) {
+                oeeScore.textContent = state.latestOee.toFixed(1) + '%';
+            }
+
+            // Update active sensors count
+            const activeSensors = document.getElementById('active-sensors');
+            if (activeSensors) {
+                activeSensors.textContent = state.uniqueTopics.size.toLocaleString();
+            }
+
             // Update anomaly count
             const anomalyCount = document.getElementById('anomaly-count');
             if (anomalyCount) {
@@ -1048,10 +1222,19 @@
                 messagesSinceLastRate = 0;
                 lastMessageTime = now;
 
+                // Store in history for chart
+                state.messageRateHistory.push(messageRate);
+                if (state.messageRateHistory.length > 20) {
+                    state.messageRateHistory.shift();
+                }
+
                 const rateEl = document.getElementById('data-rate');
                 if (rateEl) {
                     rateEl.textContent = `${messageRate} msg/sec`;
                 }
+
+                // Update charts
+                updateCharts();
             }
         }
 
@@ -1096,16 +1279,44 @@
 
         // Factory selection
         function selectFactory(factory) {
+            state.selectedFactory = factory;
             document.querySelectorAll('.factory-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
             event.target.closest('.factory-btn').classList.add('active');
-            console.log('Selected factory:', factory);
+
+            // Clear filtered data and reset displays
+            state.messages = [];
+            state.uniqueTopics.clear();
+            state.topicCounts = {};
+            state.latestOee = null;
+
+            // Reset charts
+            if (window.throughputChart) {
+                window.throughputChart.data.labels = [];
+                window.throughputChart.data.datasets[0].data = [];
+                window.throughputChart.update();
+            }
+            if (window.healthChart) {
+                window.healthChart.data.labels = [];
+                window.healthChart.data.datasets[0].data = [];
+                window.healthChart.update();
+            }
+
+            // Update metrics display
+            updateMetrics();
+
+            console.log('Filtering by factory:', factory);
         }
 
         // Initialize connection on page load
         window.addEventListener('load', () => {
             console.log('🚀 Initializing Factory Intelligence System...');
+
+            // Initialize charts first
+            initializeCharts();
+
+            // Then connect to backend
             connectWebSocket();
 
             // Update message rate every second
