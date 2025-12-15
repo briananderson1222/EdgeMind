@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProveIt! Factory Intelligence - LIVE</title>
+    <title>EdgeMind - LIVE</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -635,7 +636,7 @@
 
     <div class="container">
         <header>
-            <h1>FACTORY INTELLIGENCE</h1>
+            <h1>EDGE MIND</h1>
             <div class="subtitle">Command Center - LIVE DATA</div>
             <div class="status-badge" id="system-status">● CONNECTING...</div>
         </header>
@@ -789,14 +790,18 @@
 
         <footer>
             <div class="footer-logo">PROVEIT! CONFERENCE 2026</div>
-            <div>Powered by Claude AI • Real-time Factory Intelligence</div>
+            <div>Powered by Claude AI • Real-time Factory Insights</div>
         </footer>
     </div>
 
     <script>
         // REAL IMPLEMENTATION - Connects to actual backend
 
-        const WS_URL = 'ws://localhost:8080';
+        // Dynamic WebSocket URL - matches page protocol (ws:// for http, wss:// for https)
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const WS_URL = window.location.hostname === 'localhost'
+            ? 'ws://localhost:8080'
+            : `${wsProtocol}//${window.location.host}/ws`;
         let ws = null;
         let reconnectInterval = null;
         let isConnected = false;
@@ -1102,7 +1107,7 @@
 
         // Initialize connection on page load
         window.addEventListener('load', () => {
-            console.log('🚀 Initializing Factory Intelligence System...');
+            console.log('🚀 Initializing EdgeMind...');
             connectWebSocket();
 
             // Update message rate every second

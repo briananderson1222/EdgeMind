@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Environment variables (contains secrets)
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build outputs
+dist/
+build/
+
+# CDK outputs
+*.js.map
+cdk.out/
+cdk-outputs.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# Docker
+.docker/
+
+# Test coverage
+coverage/
+.nyc_output/

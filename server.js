@@ -1,6 +1,6 @@
 // server.js - Factory Intelligence Backend with InfluxDB + Agentic Claude
 const mqtt = require('mqtt');
-const Anthropic = require('@anthropic-ai/sdk');
+const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
 const WebSocket = require('ws');
 const express = require('express');
 const { InfluxDB, Point } = require('@influxdata/influxdb-client');
@@ -8,27 +8,29 @@ const { InfluxDB, Point } = require('@influxdata/influxdb-client');
 // Configuration
 const CONFIG = {
   mqtt: {
-    host: 'mqtt://virtualfactory.proveit.services:1883',
-    username: 'proveitreadonly',
-    password: 'proveitreadonlypassword',
+    host: process.env.MQTT_HOST || 'mqtt://virtualfactory.proveit.services:1883',
+    username: process.env.MQTT_USERNAME || 'proveitreadonly',
+    password: process.env.MQTT_PASSWORD || '',
     topics: ['#']
   },
-  anthropic: {
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    model: 'claude-sonnet-4-20250514'
+  bedrock: {
+    region: process.env.AWS_REGION || 'us-east-1',
+    modelId: process.env.BEDROCK_MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'
   },
   influxdb: {
-    url: 'http://localhost:8086',
-    token: 'proveit-factory-token-2026',
-    org: 'proveit',
-    bucket: 'factory'
+    url: process.env.INFLUXDB_URL || 'http://localhost:8086',
+    token: process.env.INFLUXDB_TOKEN || '',
+    org: process.env.INFLUXDB_ORG || 'proveit',
+    bucket: process.env.INFLUXDB_BUCKET || 'factory'
   }
 };
 
 // Initialize services
 const app = express();
-const wss = new WebSocket.Server({ port: 8080 });
-const anthropic = new Anthropic({ apiKey: CONFIG.anthropic.apiKey });
+const bedrockClient = new BedrockRuntimeClient({ region: CONFIG.bedrock.region });
+
+// Serve static files (frontend HTML)
+app.use(express.static(__dirname));
 
 // InfluxDB setup
 const influxDB = new InfluxDB({ url: CONFIG.influxdb.url, token: CONFIG.influxdb.token });
@@ -126,7 +128,10 @@ mqttClient.on('message', async (topic, message) => {
     writeApi.writePoint(point);
     factoryState.stats.influxWrites++;
   } catch (err) {
-    // Silently ignore write errors to not slow down the stream
+    factoryState.stats.influxWriteErrors = (factoryState.stats.influxWriteErrors || 0) + 1;
+    if (factoryState.stats.influxWriteErrors % 100 === 1) {
+      console.error(`InfluxDB write error (total: ${factoryState.stats.influxWriteErrors}):`, err.message);
+    }
   }
 
   // Keep small buffer in memory for immediate display
@@ -266,23 +271,50 @@ Respond in JSON format:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: CONFIG.anthropic.model,
+    const payload = {
+      anthropic_version: 'bedrock-2023-05-31',
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }]
+    };
+
+    const command = new InvokeModelCommand({
+      modelId: CONFIG.bedrock.modelId,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify(payload)
     });
 
-    let responseText = response.content[0].text;
-    responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const response = await bedrockClient.send(command);
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
 
-    const analysis = JSON.parse(responseText);
+    if (!responseBody.content || !responseBody.content[0] || !responseBody.content[0].text) {
+      console.error('Unexpected Bedrock response format:', JSON.stringify(responseBody));
+      return null;
+    }
 
-    return {
-      id: `trend_${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      ...analysis,
-      dataPoints: trends.length
-    };
+    let responseText = responseBody.content[0].text;
+
+    try {
+      responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const analysis = JSON.parse(responseText);
+      return {
+        id: `trend_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        ...analysis,
+        dataPoints: trends.length
+      };
+    } catch (parseError) {
+      console.error('Failed to parse Claude response as JSON:', parseError.message);
+      return {
+        id: `trend_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        summary: responseText.substring(0, 500),
+        severity: 'low',
+        confidence: 0.5,
+        dataPoints: trends.length,
+        parseError: true
+      };
+    }
 
   } catch (error) {
     console.error('Claude trend analysis error:', error.message);
@@ -319,32 +351,6 @@ function summarizeTrends(trends) {
 // =============================================================================
 // WEBSOCKET & API
 // =============================================================================
-wss.on('connection', (ws) => {
-  console.log('👋 Frontend connected');
-
-  ws.send(JSON.stringify({
-    type: 'initial_state',
-    data: {
-      recentMessages: factoryState.messages.slice(-20),
-      recentInsights: factoryState.trendInsights.slice(-5),
-      recentAnomalies: factoryState.anomalies.slice(-10),
-      stats: factoryState.stats
-    }
-  }));
-
-  ws.on('message', (message) => {
-    try {
-      const request = JSON.parse(message);
-      handleClientRequest(ws, request);
-    } catch (error) {
-      console.error('Invalid client message:', error);
-    }
-  });
-
-  ws.on('close', () => {
-    console.log('👋 Frontend disconnected');
-  });
-});
 
 function handleClientRequest(ws, request) {
   switch (request.type) {
@@ -372,15 +378,25 @@ async function askClaudeWithContext(question) {
 Recent trend insights: ${recentTrends}`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: CONFIG.anthropic.model,
+    const payload = {
+      anthropic_version: 'bedrock-2023-05-31',
       max_tokens: 500,
       messages: [
         { role: 'user', content: `${context}\n\nUser question: ${question}` }
       ]
+    };
+
+    const command = new InvokeModelCommand({
+      modelId: CONFIG.bedrock.modelId,
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify(payload)
     });
 
-    return response.content[0].text;
+    const response = await bedrockClient.send(command);
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+
+    return responseBody.content[0].text;
   } catch (error) {
     console.error('Error asking Claude:', error);
     return 'Sorry, I encountered an error processing your question.';
@@ -420,19 +436,64 @@ app.get('/api/trends', async (req, res) => {
 
 // Start HTTP server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 WebSocket server on port 8080`);
   console.log(`🏭 MQTT: ${mqttClient.connected ? 'Connected' : 'Connecting...'}`);
   console.log(`📈 InfluxDB: ${CONFIG.influxdb.url}`);
-  console.log(`🤖 Claude AI: ${CONFIG.anthropic.apiKey ? 'Configured' : 'Missing API key!'}`);
+  console.log(`🤖 AWS Bedrock: ${CONFIG.bedrock.region} / ${CONFIG.bedrock.modelId}`);
+});
+
+const wss = new WebSocket.Server({ server, path: '/ws' });
+
+// WebSocket connection handler
+wss.on('connection', (ws) => {
+  console.log('👋 Frontend connected');
+
+  ws.send(JSON.stringify({
+    type: 'initial_state',
+    data: {
+      recentMessages: factoryState.messages.slice(-20),
+      recentInsights: factoryState.trendInsights.slice(-5),
+      recentAnomalies: factoryState.anomalies.slice(-10),
+      stats: factoryState.stats
+    }
+  }));
+
+  ws.on('message', (message) => {
+    try {
+      const request = JSON.parse(message);
+      handleClientRequest(ws, request);
+    } catch (error) {
+      console.error('Invalid client message:', error);
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('👋 Frontend disconnected');
+  });
 });
 
 // Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\n🛑 Shutting down gracefully...');
-  await writeApi.close();
-  mqttClient.end();
-  wss.close();
-  process.exit(0);
-});
+async function shutdown(signal) {
+  console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
+
+  const timeout = setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 30000);
+
+  try {
+    await writeApi.close();
+    mqttClient.end();
+    wss.close();
+    server.close();
+    clearTimeout(timeout);
+    process.exit(0);
+  } catch (err) {
+    console.error('Error during shutdown:', err);
+    process.exit(1);
+  }
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
