@@ -300,7 +300,9 @@
         /* Live Data Stream */
         .live-stream {
             grid-column: span 6;
-            max-height: 400px;
+            height: 450px;
+            display: flex;
+            flex-direction: column;
         }
 
         .stream-container {
@@ -308,7 +310,8 @@
             border: 1px solid rgba(0, 255, 255, 0.3);
             border-radius: 4px;
             padding: 15px;
-            height: 300px;
+            flex: 1;
+            max-height: 350px;
             overflow-y: auto;
             font-family: 'Share Tech Mono', monospace;
             font-size: 0.85rem;
@@ -359,6 +362,15 @@
         /* AI Agent */
         .ai-agent {
             grid-column: span 6;
+            height: 450px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #claude-insights-container {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 280px;
         }
 
         .agent-header {
@@ -458,6 +470,36 @@
             color: var(--accent-cyan);
         }
 
+        /* Event Filter Tabs */
+        .event-filter-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .event-tab {
+            padding: 8px 16px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .event-tab:hover {
+            background: rgba(0, 255, 255, 0.2);
+            border-color: var(--accent-cyan);
+        }
+
+        .event-tab.active {
+            background: rgba(0, 255, 255, 0.3);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
         .anomaly-item {
             background: rgba(255, 51, 102, 0.1);
             border-left: 3px solid var(--accent-red);
@@ -474,17 +516,126 @@
             margin-top: 5px;
         }
 
-        /* Alerts */
-        .alerts-panel {
+        /* Factory Health Scorecard */
+        .health-scorecard {
             grid-column: span 6;
+            height: 450px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .scorecard-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            flex: 1;
+        }
+
+        .oee-gauge-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            padding: 20px;
+            background: rgba(0, 255, 255, 0.05);
+            border-radius: 8px;
+        }
+
+        .oee-gauge {
+            position: relative;
+            width: 180px;
+            height: 180px;
+        }
+
+        .oee-gauge svg {
+            transform: rotate(-90deg);
+        }
+
+        .oee-gauge-bg {
+            fill: none;
+            stroke: rgba(0, 255, 255, 0.1);
+            stroke-width: 12;
+        }
+
+        .oee-gauge-fill {
+            fill: none;
+            stroke: var(--accent-green);
+            stroke-width: 12;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1s ease-out, stroke 0.3s ease;
+        }
+
+        .oee-gauge-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .oee-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--accent-green);
+        }
+
+        .oee-label {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .health-status {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-family: 'Rajdhani', sans-serif;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .status-dot.green {
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+        }
+
+        .status-dot.yellow {
+            background: var(--accent-amber);
+            box-shadow: 0 0 10px var(--accent-amber);
+        }
+
+        .status-dot.red {
+            background: var(--accent-red);
+            box-shadow: 0 0 10px var(--accent-red);
+        }
+
+        #active-alerts-list {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 180px;
         }
 
         .alert-item {
             background: rgba(255, 51, 102, 0.1);
             border-left: 4px solid var(--accent-red);
-            padding: 15px;
-            margin-bottom: 12px;
+            padding: 12px;
+            margin-bottom: 10px;
             border-radius: 4px;
+            font-size: 0.85rem;
             animation: alertBlink 1s ease-in-out 3;
         }
 
@@ -507,12 +658,12 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
 
         .alert-severity {
             font-family: 'Orbitron', sans-serif;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -520,19 +671,27 @@
 
         .alert-time {
             font-family: 'Share Tech Mono', monospace;
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             color: var(--text-dim);
         }
 
         .alert-message {
-            font-size: 0.95rem;
+            font-size: 0.85rem;
             color: var(--text-primary);
+            line-height: 1.4;
         }
 
         /* Charts placeholder */
         .chart-panel {
             grid-column: span 6;
-            height: 300px;
+            height: 450px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-panel canvas {
+            flex: 1;
+            max-height: 380px;
         }
 
         .chart-placeholder {
@@ -741,9 +900,15 @@
                 <div class="metric-change negative">AI Analysis Active</div>
             </div>
 
-            <!-- Live Data Stream -->
+            <!-- Factory Events -->
             <div class="card live-stream">
-                <div class="card-title">MQTT Data Stream - LIVE</div>
+                <div class="card-title">Factory Events</div>
+                <div class="event-filter-tabs">
+                    <button class="event-tab active" onclick="filterEvents('all')">All</button>
+                    <button class="event-tab" onclick="filterEvents('oee')">OEE</button>
+                    <button class="event-tab" onclick="filterEvents('state')">State</button>
+                    <button class="event-tab" onclick="filterEvents('alarm')">Alarms</button>
+                </div>
                 <div class="stream-container" id="mqtt-stream">
                     <div class="stream-line">
                         <span class="stream-timestamp">[--:--:--.---]</span>
@@ -777,17 +942,52 @@
                 </div>
             </div>
 
-            <!-- Alerts -->
-            <div class="card alerts-panel">
-                <div class="card-title">Active Alerts</div>
-                <div id="alerts-container">
-                    <div class="alert-item info">
-                        <div class="alert-header">
-                            <span class="alert-severity" style="color: var(--accent-cyan);">INFO</span>
-                            <span class="alert-time">now</span>
+            <!-- Factory Health Scorecard -->
+            <div class="card health-scorecard">
+                <div class="card-title">Factory Health Scorecard</div>
+                <div class="scorecard-content">
+                    <!-- OEE Gauge -->
+                    <div class="oee-gauge-container">
+                        <div class="oee-gauge">
+                            <svg width="180" height="180">
+                                <circle class="oee-gauge-bg" cx="90" cy="90" r="80"></circle>
+                                <circle id="oee-gauge-fill" class="oee-gauge-fill" cx="90" cy="90" r="80"
+                                        stroke-dasharray="502.65" stroke-dashoffset="502.65"></circle>
+                            </svg>
+                            <div class="oee-gauge-text">
+                                <div class="oee-value" id="scorecard-oee-value">--</div>
+                                <div class="oee-label">Overall OEE</div>
+                            </div>
                         </div>
-                        <div class="alert-message">
-                            System initializing. Connecting to MQTT broker...
+                        <div class="health-status">
+                            <div class="status-indicator">
+                                <div class="status-dot green" id="status-dot-healthy"></div>
+                                <span id="status-text-healthy">Healthy</span>
+                            </div>
+                            <div class="status-indicator">
+                                <div class="status-dot yellow" id="status-dot-warning"></div>
+                                <span id="status-text-warning">Warning</span>
+                            </div>
+                            <div class="status-indicator">
+                                <div class="status-dot red" id="status-dot-critical"></div>
+                                <span id="status-text-critical">Critical</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Active Alerts -->
+                    <div>
+                        <div style="font-size: 0.9rem; font-weight: 700; margin-bottom: 10px; color: var(--accent-cyan);">Active Alerts</div>
+                        <div id="active-alerts-list">
+                            <div class="alert-item info">
+                                <div class="alert-header">
+                                    <span class="alert-severity" style="color: var(--accent-cyan);">INFO</span>
+                                    <span class="alert-time">now</span>
+                                </div>
+                                <div class="alert-message">
+                                    System initializing. Connecting to MQTT broker...
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -867,7 +1067,8 @@
             topicCounts: {},
             enterpriseCounts: { 'Enterprise A': 0, 'Enterprise B': 0, 'Enterprise C': 0 },
             selectedFactory: 'ALL',  // 'ALL', 'A', 'B', or 'C'
-            insightFilter: 'all'  // 'all' or 'anomalies'
+            insightFilter: 'all',  // 'all' or 'anomalies'
+            eventFilter: 'all'  // 'all', 'oee', 'state', 'alarm'
         };
 
         // Initialize Charts
@@ -1161,11 +1362,24 @@
 
             const line = document.createElement('div');
             line.className = 'stream-line';
+
+            // Add data attributes for filtering
+            const topic = message.topic.toLowerCase();
+            let eventType = 'other';
+            if (topic.includes('oee')) eventType = 'oee';
+            else if (topic.includes('state')) eventType = 'state';
+            else if (topic.includes('alarm')) eventType = 'alarm';
+
+            line.setAttribute('data-event-type', eventType);
+
             line.innerHTML = `
                 <span class="stream-timestamp">[${timestamp}]</span>
                 <span class="stream-topic">${message.topic}</span>
                 <span class="stream-value">${typeof message.payload === 'object' ? JSON.stringify(message.payload) : message.payload}</span>
             `;
+
+            // Check if user is at bottom before adding new message
+            const isAtBottom = stream.scrollHeight - stream.scrollTop <= stream.clientHeight + 50;
 
             stream.appendChild(line);
 
@@ -1174,7 +1388,10 @@
                 stream.removeChild(stream.firstChild);
             }
 
-            stream.scrollTop = stream.scrollHeight;
+            // Only auto-scroll if user was already at/near bottom
+            if (isAtBottom) {
+                stream.scrollTop = stream.scrollHeight;
+            }
         }
 
         // Add Claude insight to the AI agent panel
@@ -1197,6 +1414,8 @@
                 if (tabCount) {
                     tabCount.textContent = state.anomalies.length;
                 }
+                // Update active alerts in scorecard
+                updateActiveAlerts();
             }
 
             // Only add to container if we're in 'all' view
@@ -1376,15 +1595,92 @@
                     oeeScore.textContent = data.average.toFixed(1) + '%';
                     oeeStatus.textContent = `${data.period} avg • ${enterprise === 'ALL' ? 'All' : enterprise}`;
                     oeeStatus.className = 'metric-change positive';
+
+                    // Update scorecard gauge
+                    updateOEEGauge(data.average);
                 } else {
                     oeeScore.textContent = '--';
                     oeeStatus.textContent = 'No OEE data available';
                     oeeStatus.className = 'metric-change';
+                    updateOEEGauge(0);
                 }
             } catch (error) {
                 console.error('Failed to fetch OEE:', error);
                 document.getElementById('oee-status').textContent = 'API error';
+                updateOEEGauge(0);
             }
+        }
+
+        // Update OEE gauge visualization
+        function updateOEEGauge(oeePercent) {
+            const gaugeValue = document.getElementById('scorecard-oee-value');
+            const gaugeFill = document.getElementById('oee-gauge-fill');
+
+            if (!gaugeValue || !gaugeFill) return;
+
+            // Update text
+            gaugeValue.textContent = oeePercent > 0 ? oeePercent.toFixed(1) + '%' : '--';
+
+            // Calculate stroke-dashoffset (502.65 = circumference of r=80 circle)
+            const circumference = 502.65;
+            const offset = circumference - (oeePercent / 100) * circumference;
+            gaugeFill.style.strokeDashoffset = offset;
+
+            // Color based on OEE thresholds
+            let color = 'var(--accent-red)';
+            if (oeePercent >= 80) {
+                color = 'var(--accent-green)';
+            } else if (oeePercent >= 60) {
+                color = 'var(--accent-amber)';
+            }
+            gaugeFill.style.stroke = color;
+            gaugeValue.style.color = color;
+        }
+
+        // Update active alerts from Claude anomalies
+        function updateActiveAlerts() {
+            const alertsList = document.getElementById('active-alerts-list');
+            if (!alertsList) return;
+
+            // Get recent anomalies (last 5)
+            const recentAnomalies = state.anomalies.slice(-5).reverse();
+
+            if (recentAnomalies.length === 0) {
+                alertsList.innerHTML = `
+                    <div class="alert-item info">
+                        <div class="alert-header">
+                            <span class="alert-severity" style="color: var(--accent-green);">ALL CLEAR</span>
+                            <span class="alert-time">now</span>
+                        </div>
+                        <div class="alert-message">
+                            No active alerts. Factory operating normally.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            // Render anomalies as alerts
+            alertsList.innerHTML = recentAnomalies.map(anomaly => {
+                const severity = anomaly.severity || 'medium';
+                const severityColors = {
+                    'high': 'var(--accent-red)',
+                    'medium': 'var(--accent-amber)',
+                    'low': 'var(--accent-cyan)'
+                };
+                const severityColor = severityColors[severity];
+                const alertClass = severity === 'high' ? '' : severity === 'medium' ? 'warning' : 'info';
+
+                return `
+                    <div class="alert-item ${alertClass}">
+                        <div class="alert-header">
+                            <span class="alert-severity" style="color: ${severityColor};">${severity.toUpperCase()}</span>
+                            <span class="alert-time">${new Date(anomaly.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <div class="alert-message">${anomaly.text}</div>
+                    </div>
+                `;
+            }).join('');
         }
 
         // Filter insights by type
@@ -1435,6 +1731,31 @@
                     state.insights.forEach(insight => addClaudeInsight(insight));
                 }
             }
+        }
+
+        // Filter events by type
+        function filterEvents(eventType) {
+            state.eventFilter = eventType;
+
+            // Update tab styling
+            document.querySelectorAll('.event-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Show/hide events based on filter
+            const stream = document.getElementById('mqtt-stream');
+            if (!stream) return;
+
+            const lines = stream.querySelectorAll('.stream-line');
+            lines.forEach(line => {
+                const lineEventType = line.getAttribute('data-event-type');
+                if (eventType === 'all' || lineEventType === eventType) {
+                    line.style.display = '';
+                } else {
+                    line.style.display = 'none';
+                }
+            });
         }
 
         // Initialize connection on page load
