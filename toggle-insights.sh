@@ -1,5 +1,9 @@
 #!/bin/bash
 # Toggle DISABLE_INSIGHTS environment variable for EdgeMind server
+# Usage: ./toggle-insights.sh [true|false]
+#   true  = disable insights (sleeping mode)
+#   false = enable insights
+#   no arg = toggle current state
 
 ENV_FILE=".env"
 
@@ -16,29 +20,55 @@ restart_server() {
     fi
 }
 
-# Create .env if it doesn't exist
+# Function to set the value
+set_insights() {
+    local VALUE=$1
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "DISABLE_INSIGHTS=$VALUE" > "$ENV_FILE"
+    elif grep -q "^DISABLE_INSIGHTS=" "$ENV_FILE"; then
+        sed -i.bak "s/^DISABLE_INSIGHTS=.*/DISABLE_INSIGHTS=$VALUE/" "$ENV_FILE"
+        rm -f "$ENV_FILE.bak"
+    else
+        echo "DISABLE_INSIGHTS=$VALUE" >> "$ENV_FILE"
+    fi
+
+    if [ "$VALUE" = "true" ]; then
+        echo "😴 Insights DISABLED (DISABLE_INSIGHTS=true)"
+    else
+        echo "✅ Insights ENABLED (DISABLE_INSIGHTS=false)"
+    fi
+}
+
+# Handle arguments
+if [ "$1" = "true" ]; then
+    set_insights "true"
+    restart_server
+    exit 0
+elif [ "$1" = "false" ]; then
+    set_insights "false"
+    restart_server
+    exit 0
+elif [ -n "$1" ]; then
+    echo "Usage: $0 [true|false]"
+    echo "  true  = disable insights (sleeping mode)"
+    echo "  false = enable insights"
+    echo "  no arg = toggle current state"
+    exit 1
+fi
+
+# No argument - toggle mode
 if [ ! -f "$ENV_FILE" ]; then
-    echo "DISABLE_INSIGHTS=false" > "$ENV_FILE"
-    echo "Created $ENV_FILE with insights ENABLED"
+    set_insights "false"
     restart_server
     exit 0
 fi
 
-# Read current value
 CURRENT=$(grep -E "^DISABLE_INSIGHTS=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
 
 if [ "$CURRENT" = "true" ]; then
-    sed -i.bak 's/^DISABLE_INSIGHTS=true/DISABLE_INSIGHTS=false/' "$ENV_FILE"
-    rm -f "$ENV_FILE.bak"
-    echo "✅ Insights ENABLED (DISABLE_INSIGHTS=false)"
+    set_insights "false"
 else
-    if grep -q "^DISABLE_INSIGHTS=" "$ENV_FILE"; then
-        sed -i.bak 's/^DISABLE_INSIGHTS=false/DISABLE_INSIGHTS=true/' "$ENV_FILE"
-        rm -f "$ENV_FILE.bak"
-    else
-        echo "DISABLE_INSIGHTS=true" >> "$ENV_FILE"
-    fi
-    echo "😴 Insights DISABLED (DISABLE_INSIGHTS=true)"
+    set_insights "true"
 fi
 
 restart_server
