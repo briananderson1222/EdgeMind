@@ -10,8 +10,8 @@ ENV_FILE=".env"
 # Function to restart the server
 restart_server() {
     if [ -f "docker-compose.yml" ]; then
-        echo "Restarting server via docker-compose..."
-        docker-compose restart backend
+        echo "Recreating server container to apply env changes..."
+        docker-compose up -d --force-recreate backend
     elif command -v pm2 &> /dev/null; then
         echo "Restarting server via pm2..."
         pm2 restart server
