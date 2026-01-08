@@ -41,3 +41,4 @@ venv/
 # Test coverage
 coverage/
 .nyc_output/
+CLAUDE.md
