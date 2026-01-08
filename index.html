@@ -1620,14 +1620,22 @@
 
             stream.appendChild(line);
 
-            // Keep only last 50 lines
-            while (stream.children.length > 50) {
-                stream.removeChild(stream.firstChild);
-            }
+            // Only trim old messages when user is at bottom (not reading history)
+            // Allow buffer to grow to 200 while scrolled up, trim to 50 when back at bottom
+            const maxWhileScrolled = 200;
+            const normalMax = 50;
 
-            // Only auto-scroll if user was already at/near bottom
             if (isAtBottom) {
+                // User is at bottom - trim to normal size and auto-scroll
+                while (stream.children.length > normalMax) {
+                    stream.removeChild(stream.firstChild);
+                }
                 stream.scrollTop = stream.scrollHeight;
+            } else {
+                // User is scrolled up reading - only trim if buffer gets too large
+                while (stream.children.length > maxWhileScrolled) {
+                    stream.removeChild(stream.firstChild);
+                }
             }
         }
 
