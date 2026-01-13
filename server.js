@@ -924,13 +924,16 @@ function buildDomainContext(trends) {
     .filter(ent => ENTERPRISE_DOMAIN_CONTEXT[ent])
     .map(ent => {
       const ctx = ENTERPRISE_DOMAIN_CONTEXT[ent];
+      const wasteInfo = ctx.wasteThresholds
+        ? `\n- Waste Thresholds: Warning > ${ctx.wasteThresholds.warning} ${ctx.wasteThresholds.unit}, Critical > ${ctx.wasteThresholds.critical} ${ctx.wasteThresholds.unit}`
+        : '';
       return `
 **${ent} (${ctx.industry})**
 - Critical Metrics: ${ctx.criticalMetrics.join(', ')}
 - Key Concerns: ${ctx.concerns.join(', ')}
 - Safe Ranges: ${Object.entries(ctx.safeRanges).map(([k, v]) =>
   `${k}: ${v.min ? `${v.min}-` : ''}${v.max || ''} ${v.unit || ''}${v.critical ? ' (CRITICAL)' : ''}`
-).join(', ')}`;
+).join(', ')}${wasteInfo}`;
     });
 
   return contextSections.length > 0
@@ -955,14 +958,18 @@ Analyze these trends and provide:
 1. **Summary**: A 1-2 sentence overview of factory performance
 2. **Trends**: Key metrics that are rising, falling, or stable
 3. **Anomalies**: Any concerning patterns (sudden changes, values outside normal range)
-4. **Recommendations**: Actionable suggestions for operators
-5. **Enterprise Insights**: Specific insights for each enterprise based on domain knowledge
+4. **Waste Analysis**: Analyze waste/defect/reject metrics - flag any spikes above warning or critical thresholds
+5. **Recommendations**: Actionable suggestions for operators
+6. **Enterprise Insights**: Specific insights for each enterprise based on domain knowledge
+
+**IMPORTANT**: Pay special attention to metrics containing "waste", "defect", "reject", or "scrap". Rising waste trends indicate quality issues requiring immediate attention. Compare against the waste thresholds defined for each enterprise.
 
 Respond in JSON format:
 {
   "summary": "brief overview",
   "trends": [{"metric": "name", "direction": "rising|falling|stable", "change_percent": 0}],
   "anomalies": ["list of concerns"],
+  "wasteAlerts": [{"enterprise": "name", "metric": "name", "value": 0, "threshold": "warning|critical", "message": "description"}],
   "recommendations": ["list of actions"],
   "enterpriseInsights": {
     "Enterprise A": "glass manufacturing specific insight",

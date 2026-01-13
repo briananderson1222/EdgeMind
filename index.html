@@ -817,6 +817,87 @@
             color: var(--accent-red);
         }
 
+        /* Quality Metrics Panel */
+        .quality-panel {
+            grid-column: span 4;
+        }
+
+        .quality-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .quality-card {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid;
+            border-radius: 8px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .quality-card.good {
+            border-color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.1);
+        }
+
+        .quality-card.warning {
+            border-color: var(--accent-amber);
+            background: rgba(255, 191, 0, 0.1);
+        }
+
+        .quality-card.critical {
+            border-color: var(--accent-red);
+            background: rgba(255, 51, 102, 0.1);
+            animation: criticalPulse 1s ease-in-out infinite;
+        }
+
+        @keyframes criticalPulse {
+            0%, 100% { box-shadow: 0 0 10px rgba(255, 51, 102, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(255, 51, 102, 0.6); }
+        }
+
+        .quality-enterprise {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .quality-rate {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .quality-card.good .quality-rate { color: var(--accent-green); }
+        .quality-card.warning .quality-rate { color: var(--accent-amber); }
+        .quality-card.critical .quality-rate { color: var(--accent-red); }
+
+        .quality-trend {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .quality-trend.rising { color: var(--accent-red); }
+        .quality-trend.stable { color: var(--accent-amber); }
+        .quality-trend.falling { color: var(--accent-green); }
+
+        .quality-total {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 8px;
+        }
+
         /* Production Line OEE Panel */
         .line-oee-panel {
             grid-column: span 6;
@@ -1278,8 +1359,12 @@
 
         /* Responsive */
         @media (max-width: 1200px) {
-            .metrics, .chart-panel, .live-stream, .ai-agent, .alerts-panel, .equipment-state-panel, .line-oee-panel, .health-scorecard {
+            .metrics, .chart-panel, .live-stream, .ai-agent, .alerts-panel, .equipment-state-panel, .line-oee-panel, .health-scorecard, .quality-panel {
                 grid-column: span 6;
+            }
+
+            .quality-grid {
+                grid-template-columns: repeat(3, 1fr);
             }
         }
 
@@ -1289,7 +1374,7 @@
                 letter-spacing: 4px;
             }
 
-            .metrics, .chart-panel, .live-stream, .ai-agent, .alerts-panel, .equipment-state-panel, .line-oee-panel, .health-scorecard {
+            .metrics, .chart-panel, .live-stream, .ai-agent, .alerts-panel, .equipment-state-panel, .line-oee-panel, .health-scorecard, .quality-panel {
                 grid-column: span 12;
             }
 
@@ -1308,6 +1393,14 @@
 
             .line-oee-grid {
                 grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+
+            .quality-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .quality-rate {
+                font-size: 1.5rem;
             }
         }
     </style>
@@ -1511,6 +1604,14 @@
             <div class="card chart-panel">
                 <div class="card-title">Scrap by Production Line</div>
                 <canvas id="scrap-by-line-chart"></canvas>
+            </div>
+
+            <!-- Quality Metrics Panel -->
+            <div class="card quality-panel">
+                <div class="card-title">Quality Metrics by Enterprise</div>
+                <div class="quality-grid" id="quality-grid">
+                    <div class="heatmap-loading">Loading quality metrics...</div>
+                </div>
             </div>
 
             <div class="card chart-panel">
@@ -1852,6 +1953,98 @@
                 }
             } catch (error) {
                 console.error('Failed to fetch scrap by line:', error);
+            }
+        }
+
+        // Fetch and render quality metrics from waste/trends summary
+        async function fetchQualityMetrics() {
+            try {
+                const response = await fetch('/api/waste/trends');
+                const data = await response.json();
+
+                const grid = document.getElementById('quality-grid');
+                if (!grid || !data.summary) return;
+
+                // Enterprise display mapping
+                const enterpriseNames = {
+                    'Enterprise A': { short: 'ENT A', industry: 'Glass Mfg' },
+                    'Enterprise B': { short: 'ENT B', industry: 'Beverage' },
+                    'Enterprise C': { short: 'ENT C', industry: 'Pharma' }
+                };
+
+                // Thresholds for color coding (based on average waste per hour)
+                const getStatus = (avg, enterprise) => {
+                    // Different thresholds per enterprise type
+                    if (enterprise === 'Enterprise C') {
+                        // Pharma - very low tolerance
+                        if (avg < 50) return 'good';
+                        if (avg < 100) return 'warning';
+                        return 'critical';
+                    } else if (enterprise === 'Enterprise B') {
+                        // Beverage - moderate volume
+                        if (avg < 50000) return 'good';
+                        if (avg < 100000) return 'warning';
+                        return 'critical';
+                    } else {
+                        // Glass - high volume acceptable
+                        if (avg < 500000) return 'good';
+                        if (avg < 750000) return 'warning';
+                        return 'critical';
+                    }
+                };
+
+                // Trend arrows
+                const trendArrow = (trend) => {
+                    switch(trend) {
+                        case 'rising': return '↑';
+                        case 'falling': return '↓';
+                        default: return '→';
+                    }
+                };
+
+                // Format large numbers
+                const formatNumber = (num) => {
+                    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+                    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+                    return num.toFixed(0);
+                };
+
+                let html = '';
+                ['Enterprise A', 'Enterprise B', 'Enterprise C'].forEach(enterprise => {
+                    const summary = data.summary[enterprise];
+                    if (summary) {
+                        const status = getStatus(summary.avg, enterprise);
+                        const info = enterpriseNames[enterprise];
+                        html += `
+                            <div class="quality-card ${status}">
+                                <div class="quality-enterprise">${info.short}</div>
+                                <div class="quality-rate">${formatNumber(summary.avg)}</div>
+                                <div class="quality-trend ${summary.trend}">
+                                    ${trendArrow(summary.trend)} ${summary.trend}
+                                </div>
+                                <div class="quality-total">24h Total: ${formatNumber(summary.total)}</div>
+                            </div>
+                        `;
+                    } else {
+                        const info = enterpriseNames[enterprise];
+                        html += `
+                            <div class="quality-card good">
+                                <div class="quality-enterprise">${info.short}</div>
+                                <div class="quality-rate">--</div>
+                                <div class="quality-trend stable">No data</div>
+                                <div class="quality-total">24h Total: --</div>
+                            </div>
+                        `;
+                    }
+                });
+
+                grid.innerHTML = html;
+            } catch (error) {
+                console.error('Failed to fetch quality metrics:', error);
+                const grid = document.getElementById('quality-grid');
+                if (grid) {
+                    grid.innerHTML = '<div class="heatmap-loading">Failed to load quality metrics</div>';
+                }
             }
         }
 
@@ -2774,6 +2967,7 @@
             fetchFactoryStatus();
             fetchWasteTrends();
             fetchScrapByLine();
+            fetchQualityMetrics();
 
             // Fetch equipment states and line OEE
             fetchEquipmentStates();
@@ -2788,6 +2982,7 @@
             setInterval(fetchFactoryStatus, 30000);
             setInterval(fetchWasteTrends, 30000);
             setInterval(fetchScrapByLine, 30000);
+            setInterval(fetchQualityMetrics, 30000);
 
             // Refresh equipment states and line OEE every 30 seconds
             setInterval(fetchEquipmentStates, 30000);
