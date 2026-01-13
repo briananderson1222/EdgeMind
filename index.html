@@ -1509,6 +1509,11 @@
             </div>
 
             <div class="card chart-panel">
+                <div class="card-title">Scrap by Production Line</div>
+                <canvas id="scrap-by-line-chart"></canvas>
+            </div>
+
+            <div class="card chart-panel">
                 <div class="card-title">Production Heatmap</div>
                 <div class="heatmap-container" id="production-heatmap">
                     <div class="heatmap-loading">Loading factory status...</div>
@@ -1606,6 +1611,7 @@
         // Initialize Charts
         window.oeeBreakdownChart = null;
         window.wasteTrendChart = null;
+        window.scrapByLineChart = null;
 
         function initializeCharts() {
             // OEE Breakdown Chart (Horizontal Bar Chart)
@@ -1719,6 +1725,48 @@
                     }
                 }
             });
+
+            // Scrap by Line Chart (Horizontal Bar Chart)
+            const scrapByLineCtx = document.getElementById('scrap-by-line-chart').getContext('2d');
+            window.scrapByLineChart = new Chart(scrapByLineCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Total Scrap',
+                        data: [],
+                        backgroundColor: 'rgba(255, 82, 82, 0.6)',  // Accent red
+                        borderColor: 'rgba(255, 82, 82, 1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',  // Horizontal bars
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#6b7280' },
+                            grid: { color: 'rgba(255, 82, 82, 0.1)' },
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Scrap Count',
+                                color: '#e8e8e8'
+                            }
+                        },
+                        y: {
+                            ticks: { color: '#e8e8e8', font: { size: 12 } },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
         }
 
         // Update charts with new data (removed - no longer needed)
@@ -1780,6 +1828,30 @@
                 }
             } catch (error) {
                 console.error('Failed to fetch waste trends:', error);
+            }
+        }
+
+        // Fetch scrap by line and update chart
+        async function fetchScrapByLine() {
+            try {
+                const response = await fetch('/api/waste/by-line');
+                const data = await response.json();
+
+                if (window.scrapByLineChart && data.lines) {
+                    // Get top 10 worst lines
+                    const top10Lines = data.lines.slice(0, 10);
+
+                    // Format labels as "Site / Line"
+                    const labels = top10Lines.map(line => `${line.site} / ${line.line}`);
+                    const values = top10Lines.map(line => line.total);
+
+                    // Update chart
+                    window.scrapByLineChart.data.labels = labels;
+                    window.scrapByLineChart.data.datasets[0].data = values;
+                    window.scrapByLineChart.update('none');
+                }
+            } catch (error) {
+                console.error('Failed to fetch scrap by line:', error);
             }
         }
 
@@ -2701,6 +2773,7 @@
             fetchOEEBreakdown();
             fetchFactoryStatus();
             fetchWasteTrends();
+            fetchScrapByLine();
 
             // Fetch equipment states and line OEE
             fetchEquipmentStates();
@@ -2714,6 +2787,7 @@
             setInterval(fetchOEEBreakdown, 30000);
             setInterval(fetchFactoryStatus, 30000);
             setInterval(fetchWasteTrends, 30000);
+            setInterval(fetchScrapByLine, 30000);
 
             // Refresh equipment states and line OEE every 30 seconds
             setInterval(fetchEquipmentStates, 30000);

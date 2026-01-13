@@ -1797,7 +1797,8 @@ app.get('/api/waste/trends', async (req, res) => {
           r._measurement == "count_defect" or
           r._measurement == "input_countdefect" or
           r._measurement == "workorder_quantitydefect" or
-          r._measurement == "chrom_CHR01_WASTE_PV"
+          r._measurement == "chrom_CHR01_WASTE_PV" or
+          r._measurement == "edge_reject_gate_status"
         )
         |> filter(fn: (r) => r._value >= 0)
         |> group(columns: ["enterprise", "_measurement"])
@@ -1871,6 +1872,88 @@ app.get('/api/waste/trends', async (req, res) => {
     console.error('Waste trends endpoint error:', error);
     res.status(500).json({
       error: 'Failed to query waste trends',
+      message: error.message
+    });
+  }
+});
+
+// NEW: Waste by production line endpoint
+app.get('/api/waste/by-line', async (req, res) => {
+  try {
+    const fluxQuery = `
+      from(bucket: "factory")
+        |> range(start: -24h)
+        |> filter(fn: (r) => r._field == "value")
+        |> filter(fn: (r) =>
+          r._measurement == "OEE_Waste" or
+          r._measurement == "Production_DefectCHK" or
+          r._measurement == "Production_DefectDIM" or
+          r._measurement == "Production_DefectSED" or
+          r._measurement == "Production_RejectCount" or
+          r._measurement == "count_defect" or
+          r._measurement == "input_countdefect" or
+          r._measurement == "workorder_quantitydefect" or
+          r._measurement == "chrom_CHR01_WASTE_PV" or
+          r._measurement == "edge_reject_gate_status"
+        )
+        |> filter(fn: (r) => r._value >= 0)
+        |> group(columns: ["enterprise", "site", "area", "_measurement"])
+        |> sum()
+    `;
+
+    const lineData = new Map(); // Map<lineKey, lineInfo>
+
+    await new Promise((resolve) => {
+      queryApi.queryRows(fluxQuery, {
+        next(row, tableMeta) {
+          const o = tableMeta.toObject(row);
+          if (o._value !== undefined && o.enterprise && o.site && o.area && o._measurement) {
+            const lineKey = `${o.enterprise}|${o.site}|${o.area}`;
+
+            if (!lineData.has(lineKey)) {
+              lineData.set(lineKey, {
+                enterprise: o.enterprise,
+                site: o.site,
+                line: o.area,
+                area: o.area,
+                total: 0,
+                measurements: []
+              });
+            }
+
+            const line = lineData.get(lineKey);
+            line.total += o._value;
+            if (!line.measurements.includes(o._measurement)) {
+              line.measurements.push(o._measurement);
+            }
+          }
+        },
+        error(error) {
+          console.error('Waste by line query error:', error);
+          resolve();
+        },
+        complete() {
+          resolve();
+        }
+      });
+    });
+
+    // Convert Map to array and sort by total descending (worst lines first)
+    const lines = Array.from(lineData.values())
+      .map(line => ({
+        ...line,
+        total: parseFloat(line.total.toFixed(2))
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    res.json({
+      lines,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Waste by line endpoint error:', error);
+    res.status(500).json({
+      error: 'Failed to query waste by line',
       message: error.message
     });
   }
