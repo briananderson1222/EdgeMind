@@ -2058,30 +2058,24 @@
                 // API returns: enterprise, site, line (area), oee
                 const lineName = line.name || `${line.site} - ${line.line || 'Line'}`;
 
-                // Format breakdown if available (check for null explicitly, not just undefined)
-                let breakdownHtml = '';
-                const hasAvailability = line.availability !== null && line.availability !== undefined;
-                const hasPerformance = line.performance !== null && line.performance !== undefined;
-                const hasQuality = line.quality !== null && line.quality !== undefined;
-
-                if (hasAvailability && hasPerformance && hasQuality) {
-                    breakdownHtml = `
-                        <div class="line-breakdown">
-                            <div class="line-breakdown-item">
-                                <span class="line-breakdown-label">A</span>
-                                <span class="line-breakdown-value">${line.availability}%</span>
-                            </div>
-                            <div class="line-breakdown-item">
-                                <span class="line-breakdown-label">P</span>
-                                <span class="line-breakdown-value">${line.performance}%</span>
-                            </div>
-                            <div class="line-breakdown-item">
-                                <span class="line-breakdown-label">Q</span>
-                                <span class="line-breakdown-value">${line.quality}%</span>
-                            </div>
+                // Format breakdown - always show A/P/Q labels with "--" when unavailable
+                const fmtVal = (v) => (v !== null && v !== undefined) ? `${v}%` : '--';
+                const breakdownHtml = `
+                    <div class="line-breakdown">
+                        <div class="line-breakdown-item">
+                            <span class="line-breakdown-label">A</span>
+                            <span class="line-breakdown-value">${fmtVal(line.availability)}</span>
                         </div>
-                    `;
-                }
+                        <div class="line-breakdown-item">
+                            <span class="line-breakdown-label">P</span>
+                            <span class="line-breakdown-value">${fmtVal(line.performance)}</span>
+                        </div>
+                        <div class="line-breakdown-item">
+                            <span class="line-breakdown-label">Q</span>
+                            <span class="line-breakdown-value">${fmtVal(line.quality)}</span>
+                        </div>
+                    </div>
+                `;
 
                 return `
                     <div class="line-card ${statusClass}" data-enterprise="${line.enterprise || ''}">

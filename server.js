@@ -713,18 +713,39 @@ mqttClient.on('message', async (topic, message) => {
 
   // Detect and cache equipment state changes
   const topicLower = topic.toLowerCase();
-  if (topicLower.includes('state') || topicLower.includes('status')) {
+  if (topicLower.includes('statecurrent') || (topicLower.includes('state') && !topicLower.includes('statereason'))) {
     const parts = topic.split('/');
-    if (parts.length >= 4) {
+    if (parts.length >= 3) {
       const enterprise = parts[0];
       const site = parts[1];
-      const machine = parts[3];
+      // Machine could be at different positions depending on structure
+      const machine = parts.length >= 4 ? parts[3] : parts[2];
       const equipmentKey = `${enterprise}/${site}/${machine}`;
 
-      // Parse state value (expecting 1=DOWN, 2=IDLE, 3=RUNNING)
-      const stateValue = parseInt(payload);
-      if (!isNaN(stateValue) && equipmentStateCache.STATE_CODES[stateValue]) {
-        const stateInfo = equipmentStateCache.STATE_CODES[stateValue];
+      // Parse state value - support both numeric (1=DOWN, 2=IDLE, 3=RUNNING) and string values
+      let stateValue = null;
+      let stateInfo = null;
+
+      const numValue = parseInt(payload);
+      if (!isNaN(numValue) && equipmentStateCache.STATE_CODES[numValue]) {
+        stateValue = numValue;
+        stateInfo = equipmentStateCache.STATE_CODES[numValue];
+      } else {
+        // Check for string state values
+        const payloadLower = String(payload).toLowerCase();
+        if (payloadLower.includes('down') || payloadLower.includes('stop') || payloadLower.includes('fault') || payloadLower === '1') {
+          stateValue = 1;
+          stateInfo = equipmentStateCache.STATE_CODES[1];
+        } else if (payloadLower.includes('idle') || payloadLower.includes('standby') || payloadLower.includes('wait') || payloadLower === '2') {
+          stateValue = 2;
+          stateInfo = equipmentStateCache.STATE_CODES[2];
+        } else if (payloadLower.includes('run') || payloadLower.includes('active') || payloadLower.includes('operating') || payloadLower === '3') {
+          stateValue = 3;
+          stateInfo = equipmentStateCache.STATE_CODES[3];
+        }
+      }
+
+      if (stateValue && stateInfo) {
         const existingState = equipmentStateCache.states.get(equipmentKey);
 
         // Only update if state changed or first time seen
@@ -736,7 +757,7 @@ mqttClient.on('message', async (topic, message) => {
             state: stateValue,
             stateName: stateInfo.name,
             color: stateInfo.color,
-            reason: null, // Could be parsed from additional topics
+            reason: null,
             lastUpdate: timestamp,
             firstSeen: existingState ? existingState.firstSeen : timestamp
           };
