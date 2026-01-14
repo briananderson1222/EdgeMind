@@ -6,36 +6,26 @@ const express = require('express');
 const { InfluxDB, Point } = require('@influxdata/influxdb-client');
 const { createCmmsProvider } = require('./lib/cmms-interface');
 
-// Configuration
-const CONFIG = {
-  mqtt: {
-    host: process.env.MQTT_HOST || 'mqtt://virtualfactory.proveit.services:1883',
-    username: process.env.MQTT_USERNAME || 'proveitreadonly',
-    password: process.env.MQTT_PASSWORD || '',
-    topics: ['#']
-  },
-  bedrock: {
-    region: process.env.AWS_REGION || 'us-east-1',
-    modelId: process.env.BEDROCK_MODEL_ID || 'us.anthropic.claude-sonnet-4-20250514-v1:0'
-  },
-  influxdb: {
-    url: process.env.INFLUXDB_URL || 'http://localhost:8086',
-    token: process.env.INFLUXDB_TOKEN || '',
-    org: process.env.INFLUXDB_ORG || 'proveit',
-    bucket: process.env.INFLUXDB_BUCKET || 'factory'
-  },
-  disableInsights: process.env.DISABLE_INSIGHTS === 'true',
-  cmms: {
-    enabled: process.env.CMMS_ENABLED === 'true',
-    provider: process.env.CMMS_PROVIDER || 'maintainx',
-    maintainx: {
-      apiKey: process.env.MAINTAINX_API_KEY || '',
-      baseUrl: process.env.MAINTAINX_BASE_URL || 'https://api.getmaintainx.com/v1',
-      defaultLocationId: process.env.MAINTAINX_DEFAULT_LOCATION_ID || null,
-      defaultAssigneeId: process.env.MAINTAINX_DEFAULT_ASSIGNEE_ID || null
-    }
-  }
-};
+// Foundation modules
+const CONFIG = require('./lib/config');
+const { factoryState, schemaCache, equipmentStateCache } = require('./lib/state');
+const {
+  sanitizeInfluxIdentifier,
+  formatDuration,
+  validateEnterprise,
+  validateSite,
+  extractMeasurementFromTopic,
+  VALID_ENTERPRISES,
+  VALID_WS_MESSAGE_TYPES,
+  MAX_INPUT_LENGTH
+} = require('./lib/validation');
+const {
+  MEASUREMENT_CLASSIFICATIONS,
+  ENTERPRISE_DOMAIN_CONTEXT,
+  classifyMeasurement,
+  getEnterpriseContext
+} = require('./lib/domain-context');
+const { refreshSchemaCache, refreshHierarchyCache } = require('./lib/schema');
 
 // Initialize services
 const app = express();
@@ -64,233 +54,6 @@ app.use(express.static(__dirname));
 const influxDB = new InfluxDB({ url: CONFIG.influxdb.url, token: CONFIG.influxdb.token });
 const writeApi = influxDB.getWriteApi(CONFIG.influxdb.org, CONFIG.influxdb.bucket, 'ns');
 const queryApi = influxDB.getQueryApi(CONFIG.influxdb.org);
-
-// State management
-const factoryState = {
-  messages: [],
-  anomalies: [],
-  insights: [],
-  trendInsights: [],
-  anomalyFilters: [], // User-defined filter rules for Claude analysis
-  stats: {
-    messageCount: 0,
-    anomalyCount: 0,
-    lastUpdate: null,
-    influxWrites: 0
-  }
-};
-
-// Schema discovery cache
-const schemaCache = {
-  measurements: new Map(), // measurement name -> { count, lastSeen, valueType, sampleValues, enterprises, sites }
-  lastRefresh: null,
-  hierarchy: null, // Enterprise -> Site -> Area -> Machine -> Measurements tree
-  lastHierarchyRefresh: null,
-  knownMeasurements: new Set(), // Track measurements we've seen (Phase 4)
-  CACHE_TTL_MS: 5 * 60 * 1000 // 5 minutes
-};
-
-// Equipment state cache
-const equipmentStateCache = {
-  states: new Map(), // Map<equipmentKey, stateData>
-  CACHE_TTL_MS: 60 * 1000, // 1 minute
-  STATE_CODES: {
-    1: { name: 'DOWN', color: 'red', priority: 3 },
-    2: { name: 'IDLE', color: 'yellow', priority: 2 },
-    3: { name: 'RUNNING', color: 'green', priority: 1 }
-  }
-};
-
-/**
- * Sanitizes InfluxDB identifiers to prevent Flux query injection.
- * Removes potentially dangerous characters like quotes and backslashes.
- * @param {string} identifier - The identifier to sanitize
- * @returns {string} Sanitized identifier
- */
-function sanitizeInfluxIdentifier(identifier) {
-  if (typeof identifier !== 'string') return '';
-  return identifier.replace(/["\\]/g, '');
-}
-
-/**
- * Formats a duration in milliseconds into a human-readable string.
- * @param {number} durationMs - Duration in milliseconds
- * @returns {string} Formatted duration (e.g., "2h 15m", "45s")
- */
-function formatDuration(durationMs) {
-  const seconds = Math.floor(durationMs / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (days > 0) {
-    return `${days}d ${hours % 24}h`;
-  } else if (hours > 0) {
-    return `${hours}h ${minutes % 60}m`;
-  } else if (minutes > 0) {
-    return `${minutes}m ${seconds % 60}s`;
-  } else {
-    return `${seconds}s`;
-  }
-}
-
-// =============================================================================
-// INPUT VALIDATION
-// =============================================================================
-
-/**
- * Valid enterprise names for API input validation.
- * SECURITY: Whitelist approach prevents injection attacks.
- */
-const VALID_ENTERPRISES = ['ALL', 'Enterprise A', 'Enterprise B', 'Enterprise C'];
-
-/**
- * Valid WebSocket message types.
- * SECURITY: Whitelist approach prevents processing of unknown message types.
- */
-const VALID_WS_MESSAGE_TYPES = ['get_stats', 'ask_claude', 'update_anomaly_filter'];
-
-/**
- * Maximum length for user-provided strings.
- * SECURITY: Prevents DoS via oversized inputs.
- */
-const MAX_INPUT_LENGTH = 1000;
-
-/**
- * Validates and sanitizes enterprise parameter.
- * @param {string} enterprise - The enterprise parameter from request
- * @returns {string|null} Validated enterprise or null if invalid
- */
-function validateEnterprise(enterprise) {
-  if (!enterprise || typeof enterprise !== 'string') return 'ALL';
-  if (enterprise.length > MAX_INPUT_LENGTH) return null;
-
-  // Check against whitelist
-  if (VALID_ENTERPRISES.includes(enterprise)) {
-    return enterprise;
-  }
-
-  // For dynamic enterprises discovered at runtime, sanitize the input
-  const sanitized = sanitizeInfluxIdentifier(enterprise);
-  if (sanitized.length > 0 && sanitized.length <= 100) {
-    return sanitized;
-  }
-
-  return null;
-}
-
-/**
- * Validates and sanitizes site parameter.
- * @param {string} site - The site parameter from request
- * @returns {string|null} Validated site or null
- */
-function validateSite(site) {
-  if (!site || typeof site !== 'string') return null;
-  if (site.length > MAX_INPUT_LENGTH) return null;
-
-  const sanitized = sanitizeInfluxIdentifier(site);
-  if (sanitized.length > 0 && sanitized.length <= 100) {
-    return sanitized;
-  }
-
-  return null;
-}
-
-/**
- * Extracts the measurement name from an MQTT topic.
- * Uses the same logic as parseTopicToInflux to ensure consistency.
- * @param {string} topic - The MQTT topic
- * @returns {string|null} The measurement name or null if unable to extract
- */
-function extractMeasurementFromTopic(topic) {
-  const parts = topic.split('/');
-  if (parts.length >= 2) {
-    return parts.slice(-2).join('_').replace(/[^a-zA-Z0-9_]/g, '_');
-  }
-  return null;
-}
-
-// =============================================================================
-// PHASE 3: AUTO-CLASSIFICATION
-// =============================================================================
-
-/**
- * Classification categories for measurements based on naming patterns and value characteristics.
- * Used to automatically categorize measurements for better organization and querying.
- */
-const MEASUREMENT_CLASSIFICATIONS = {
-  oee_metric: ['oee', 'OEE_Performance', 'OEE_Availability', 'OEE_Quality', 'availability', 'performance', 'quality'],
-  sensor_reading: ['speed', 'temperature', 'pressure', 'humidity', 'voltage', 'current', 'flow', 'level', 'weight'],
-  state_status: ['state', 'status', 'running', 'stopped', 'fault', 'alarm', 'mode', 'ready'],
-  counter: ['count', 'total', 'produced', 'rejected', 'scrap', 'waste', 'good'],
-  timing: ['time', 'duration', 'cycle', 'downtime', 'uptime', 'runtime'],
-  description: [] // Fallback for string values
-};
-
-// =============================================================================
-// ENTERPRISE DOMAIN CONTEXT
-// =============================================================================
-
-/**
- * Domain-specific context for each enterprise.
- * Provides industry knowledge and safety ranges for AI-powered insights.
- */
-const ENTERPRISE_DOMAIN_CONTEXT = {
-  'Enterprise A': {
-    industry: 'Glass Manufacturing',
-    domain: 'glass',
-    equipment: {
-      'Furnace': { type: 'glass-furnace', normalTemp: [2650, 2750], unit: '°F' },
-      'ISMachine': { type: 'forming-machine', cycleTime: [8, 12], unit: 'sec' },
-      'Lehr': { type: 'annealing-oven', tempGradient: [1050, 400] }
-    },
-    criticalMetrics: ['temperature', 'gob_weight', 'defect_count'],
-    concerns: ['thermal_shock', 'crown_temperature', 'refractory_wear'],
-    safeRanges: {
-      'furnace_temp': { min: 2600, max: 2800, unit: '°F', critical: true },
-      'crown_temp': { min: 2400, max: 2600, unit: '°F' }
-    },
-    wasteMetrics: ['OEE_Waste', 'Production_DefectCHK', 'Production_DefectDIM', 'Production_DefectSED', 'Production_RejectCount'],
-    wasteThresholds: { warning: 10, critical: 25, unit: 'defects/hr' }
-  },
-  'Enterprise B': {
-    industry: 'Beverage Bottling',
-    domain: 'beverage',
-    equipment: {
-      'Filler': { type: 'bottle-filler', normalSpeed: [400, 600], unit: 'BPM' },
-      'Labeler': { type: 'labeling-machine', accuracy: 99.5 },
-      'Palletizer': { type: 'palletizing-robot', cycleTime: [10, 15] }
-    },
-    criticalMetrics: ['countinfeed', 'countoutfeed', 'countdefect', 'oee'],
-    concerns: ['line_efficiency', 'changeover_time', 'reject_rate'],
-    rawCounterFields: ['countinfeed', 'countoutfeed', 'countdefect'],
-    safeRanges: {
-      'reject_rate': { max: 2, unit: '%', warning: 1.5 },
-      'filler_speed': { min: 350, max: 650, unit: 'BPM' }
-    },
-    wasteMetrics: ['count_defect', 'input_countdefect', 'workorder_quantitydefect'],
-    wasteThresholds: { warning: 50, critical: 100, unit: 'defects/hr' }
-  },
-  'Enterprise C': {
-    industry: 'Bioprocessing / Pharma',
-    domain: 'pharma',
-    batchControl: 'ISA-88',
-    equipment: {
-      'SUM': { type: 'single-use-mixer', phase: 'preparation' },
-      'SUB': { type: 'single-use-bioreactor', phase: 'cultivation' },
-      'CHROM': { type: 'chromatography', phase: 'purification' },
-      'TFF': { type: 'tangential-flow-filtration', phase: 'filtration' }
-    },
-    criticalMetrics: ['PV_percent', 'phase', 'batch_id'],
-    concerns: ['contamination', 'batch_deviation', 'sterility'],
-    safeRanges: {
-      'pH': { min: 6.8, max: 7.4, critical: true },
-      'dissolved_oxygen': { min: 30, max: 70, unit: '%' }
-    },
-    wasteMetrics: ['chrom_CHR01_WASTE_PV'],
-    wasteThresholds: { warning: 5, critical: 15, unit: 'L' }
-  }
-};
 
 // =============================================================================
 // PHASE 1 & 2: ROBUST OEE CONFIGURATION & DISCOVERY
@@ -593,45 +356,6 @@ function createOEEResult(enterprise, site, oee, components, tier, reason, meta =
   };
 }
 
-/**
- * Classifies a measurement based on its name, value type, and sample values.
- * Uses pattern matching against known measurement types and infers from value characteristics.
- *
- * @param {string} name - The measurement name
- * @param {string} valueType - Type of value ('numeric' or 'string')
- * @param {Array} sampleValues - Sample values from the measurement
- * @returns {string} Classification category name
- */
-function classifyMeasurement(name, valueType, sampleValues) {
-  const nameLower = name.toLowerCase();
-
-  // Match against patterns
-  for (const [classification, patterns] of Object.entries(MEASUREMENT_CLASSIFICATIONS)) {
-    if (patterns.some(p => nameLower.includes(p.toLowerCase()))) {
-      return classification;
-    }
-  }
-
-  // Infer from value type and range
-  if (valueType === 'string') {
-    return 'description';
-  }
-
-  if (valueType === 'numeric' && sampleValues && sampleValues.length > 0) {
-    const numericValues = sampleValues.filter(v => typeof v === 'number');
-    if (numericValues.length > 0) {
-      const avg = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
-      if (avg >= 0 && avg <= 100) return 'percentage_metric';
-      if (avg > 1000) return 'counter';
-    }
-  }
-
-  return 'unknown';
-}
-
-// Track in-progress schema refresh to prevent race conditions
-let schemaRefreshInProgress = null;
-
 // Agentic loop state
 let lastTrendAnalysis = Date.now();
 const TREND_ANALYSIS_INTERVAL = 30000; // Analyze trends every 30 seconds
@@ -734,7 +458,7 @@ mqttClient.on('message', async (topic, message) => {
         firstSeen: timestamp,
         sampleValue: payload.substring(0, 100),
         valueType: isNumeric ? 'numeric' : 'string',
-        classification: classifyMeasurement(
+        classification: classifyMeasurementDetailed(
           measurement,
           isNumeric ? 'numeric' : 'string',
           isNumeric ? [sampleValue] : []
@@ -1216,291 +940,6 @@ function summarizeTrends(trends) {
   });
 
   return lines.join('\n') || 'No aggregated data available';
-}
-
-// =============================================================================
-// SCHEMA DISCOVERY
-// =============================================================================
-
-/**
- * Refreshes the schema cache by querying InfluxDB for measurement metadata.
- * Only refreshes if cache has expired (older than CACHE_TTL_MS).
- * Uses a lock to prevent concurrent refresh operations.
- */
-async function refreshSchemaCache() {
-  // Check if cache is still valid
-  if (schemaCache.lastRefresh &&
-      Date.now() - schemaCache.lastRefresh < schemaCache.CACHE_TTL_MS) {
-    return;
-  }
-
-  // If a refresh is already in progress, wait for it instead of starting another
-  if (schemaRefreshInProgress) {
-    console.log('🔍 Schema refresh already in progress, waiting...');
-    await schemaRefreshInProgress;
-    return;
-  }
-
-  console.log('🔍 Refreshing schema cache...');
-  const startTime = Date.now();
-
-  // Create the refresh promise and store it in the lock
-  const refreshPromise = (async () => {
-
-  try {
-    // Query 1: Get measurement counts and tags from last 24 hours
-    const countQuery = `
-      from(bucket: "${CONFIG.influxdb.bucket}")
-        |> range(start: -24h)
-        |> filter(fn: (r) => r._field == "value")
-        |> group(columns: ["_measurement", "enterprise", "site"])
-        |> count()
-    `;
-
-    const measurementData = new Map();
-
-    await new Promise((resolve, reject) => {
-      queryApi.queryRows(countQuery, {
-        next(row, tableMeta) {
-          const o = tableMeta.toObject(row);
-          const measurement = o._measurement;
-
-          if (!measurementData.has(measurement)) {
-            measurementData.set(measurement, {
-              name: measurement,
-              count: 0,
-              enterprises: new Set(),
-              sites: new Set(),
-              lastSeen: null
-            });
-          }
-
-          const data = measurementData.get(measurement);
-          data.count += o._value || 0;
-          if (o.enterprise) data.enterprises.add(o.enterprise);
-          if (o.site) data.sites.add(o.site);
-          if (o._time) {
-            const timeDate = new Date(o._time);
-            if (!data.lastSeen || timeDate > new Date(data.lastSeen)) {
-              data.lastSeen = o._time;
-            }
-          }
-        },
-        error(error) {
-          console.error('Schema cache count query error:', error);
-          reject(error);
-        },
-        complete() {
-          resolve();
-        }
-      });
-    });
-
-    // Query 2: Get sample values for each measurement to determine type (in parallel batches)
-    const measurementEntries = Array.from(measurementData.entries());
-    const BATCH_SIZE = 10;
-
-    for (let i = 0; i < measurementEntries.length; i += BATCH_SIZE) {
-      const batch = measurementEntries.slice(i, i + BATCH_SIZE);
-
-      await Promise.all(batch.map(async ([measurement, data]) => {
-        const sanitizedMeasurement = sanitizeInfluxIdentifier(measurement);
-        const sampleQuery = `
-          from(bucket: "${CONFIG.influxdb.bucket}")
-            |> range(start: -1h)
-            |> filter(fn: (r) => r._measurement == "${sanitizedMeasurement}")
-            |> filter(fn: (r) => r._field == "value")
-            |> limit(n: 3)
-        `;
-
-        const sampleValues = [];
-        let valueType = 'numeric';
-
-        await new Promise((resolve) => {
-          queryApi.queryRows(sampleQuery, {
-            next(row, tableMeta) {
-              const o = tableMeta.toObject(row);
-              if (o._value !== undefined && o._value !== null) {
-                sampleValues.push(o._value);
-                // Determine if numeric or string based on value type
-                if (typeof o._value === 'string' && isNaN(parseFloat(o._value))) {
-                  valueType = 'string';
-                }
-              }
-            },
-            error(error) {
-              console.error(`Sample query error for ${measurement}:`, error.message);
-              resolve();
-            },
-            complete() {
-              resolve();
-            }
-          });
-        });
-
-        data.sampleValues = sampleValues.slice(0, 3);
-        data.valueType = valueType;
-      }));
-    }
-
-    // Update cache with classification
-    schemaCache.measurements.clear();
-    for (const [measurement, data] of measurementData.entries()) {
-      const classification = classifyMeasurement(data.name, data.valueType, data.sampleValues);
-
-      schemaCache.measurements.set(measurement, {
-        name: data.name,
-        count: data.count,
-        lastSeen: data.lastSeen || new Date().toISOString(),
-        valueType: data.valueType,
-        sampleValues: data.sampleValues,
-        enterprises: Array.from(data.enterprises),
-        sites: Array.from(data.sites),
-        classification: classification
-      });
-    }
-
-    // Phase 4: Sync knownMeasurements with refreshed cache
-    schemaCache.knownMeasurements.clear();
-    for (const m of schemaCache.measurements.keys()) {
-      schemaCache.knownMeasurements.add(m);
-    }
-
-    schemaCache.lastRefresh = Date.now();
-    const duration = Date.now() - startTime;
-    console.log(`✅ Schema cache refreshed: ${schemaCache.measurements.size} measurements (${duration}ms)`);
-
-  } catch (error) {
-    console.error('❌ Schema cache refresh failed:', error);
-    throw error;
-  }
-  })();
-
-  // Store the promise in the lock
-  schemaRefreshInProgress = refreshPromise;
-
-  try {
-    await refreshPromise;
-  } finally {
-    // Clear the lock when done
-    schemaRefreshInProgress = null;
-  }
-}
-
-/**
- * Refreshes the hierarchy cache by querying InfluxDB for topic structure.
- * Only refreshes if cache has expired (older than CACHE_TTL_MS).
- * Builds a tree: Enterprise -> Site -> Area -> Machine -> Measurements
- */
-async function refreshHierarchyCache() {
-  // Check if cache is still valid
-  if (schemaCache.lastHierarchyRefresh &&
-      Date.now() - schemaCache.lastHierarchyRefresh < schemaCache.CACHE_TTL_MS) {
-    return;
-  }
-
-  console.log('🌳 Refreshing hierarchy cache...');
-  const startTime = Date.now();
-
-  try {
-    // Query InfluxDB for hierarchical grouping with counts
-    const hierarchyQuery = `
-      from(bucket: "${CONFIG.influxdb.bucket}")
-        |> range(start: -24h)
-        |> filter(fn: (r) => r._field == "value")
-        |> group(columns: ["enterprise", "site", "area", "machine", "_measurement"])
-        |> count()
-        |> group()
-    `;
-
-    const hierarchyData = [];
-
-    await new Promise((resolve, reject) => {
-      queryApi.queryRows(hierarchyQuery, {
-        next(row, tableMeta) {
-          const o = tableMeta.toObject(row);
-          hierarchyData.push({
-            enterprise: o.enterprise || 'unknown',
-            site: o.site || 'unknown',
-            area: o.area || 'unknown',
-            machine: o.machine || 'unknown',
-            measurement: o._measurement,
-            count: o._value || 0
-          });
-        },
-        error(error) {
-          console.error('Hierarchy cache query error:', error);
-          reject(error);
-        },
-        complete() {
-          resolve();
-        }
-      });
-    });
-
-    // Build the hierarchy tree from flat data
-    const hierarchy = {};
-
-    hierarchyData.forEach(item => {
-      const { enterprise, site, area, machine, measurement, count } = item;
-
-      // Initialize enterprise level
-      if (!hierarchy[enterprise]) {
-        hierarchy[enterprise] = {
-          totalCount: 0,
-          sites: {}
-        };
-      }
-
-      // Initialize site level
-      if (!hierarchy[enterprise].sites[site]) {
-        hierarchy[enterprise].sites[site] = {
-          totalCount: 0,
-          areas: {}
-        };
-      }
-
-      // Initialize area level
-      if (!hierarchy[enterprise].sites[site].areas[area]) {
-        hierarchy[enterprise].sites[site].areas[area] = {
-          totalCount: 0,
-          machines: {}
-        };
-      }
-
-      // Initialize machine level
-      if (!hierarchy[enterprise].sites[site].areas[area].machines[machine]) {
-        hierarchy[enterprise].sites[site].areas[area].machines[machine] = {
-          totalCount: 0,
-          measurements: []
-        };
-      }
-
-      // Add measurement to machine
-      const machineData = hierarchy[enterprise].sites[site].areas[area].machines[machine];
-      if (!machineData.measurements.includes(measurement)) {
-        machineData.measurements.push(measurement);
-      }
-
-      // Aggregate counts up the hierarchy
-      machineData.totalCount += count;
-      hierarchy[enterprise].sites[site].areas[area].totalCount += count;
-      hierarchy[enterprise].sites[site].totalCount += count;
-      hierarchy[enterprise].totalCount += count;
-    });
-
-    // Update cache
-    schemaCache.hierarchy = hierarchy;
-    schemaCache.lastHierarchyRefresh = Date.now();
-
-    const duration = Date.now() - startTime;
-    const enterpriseCount = Object.keys(hierarchy).length;
-    console.log(`✅ Hierarchy cache refreshed: ${enterpriseCount} enterprises (${duration}ms)`);
-
-  } catch (error) {
-    console.error('❌ Hierarchy cache refresh failed:', error);
-    throw error;
-  }
 }
 
 // =============================================================================
@@ -2175,6 +1614,10 @@ app.get('/api/waste/by-line', async (req, res) => {
     console.error('Waste by line endpoint error:', error);
     res.status(500).json({
       error: 'Failed to query waste by line',
+      details: error.message
+    });
+  }
+});
 
 // =============================================================================
 // CMMS INTEGRATION ENDPOINTS
