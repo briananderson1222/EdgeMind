@@ -258,6 +258,18 @@ setInterval(() => {
   writeApi.flush().catch(err => console.error('InfluxDB flush error:', err));
 }, 5000);
 
+// Clean up stale equipment state cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, stateData] of equipmentStateCache.states.entries()) {
+    const lastUpdateMs = new Date(stateData.lastUpdate).getTime();
+    if (now - lastUpdateMs > equipmentStateCache.CACHE_TTL_MS) {
+      equipmentStateCache.states.delete(key);
+      console.log(`[STATE] Evicted stale equipment: ${key}`);
+    }
+  }
+}, 60000); // Clean up every minute
+
 // =============================================================================
 // AGENTIC TREND ANALYSIS LOOP - Now handled by lib/ai module
 // =============================================================================
@@ -1259,6 +1271,9 @@ async function shutdown(signal) {
   }, 30000);
 
   try {
+    // Stop agentic loop intervals/timeouts
+    aiModule.stopAgenticLoop();
+
     await writeApi.close();
     mqttClient.end();
     wss.close();

@@ -61,6 +61,11 @@ window.wasteTrendChart = null;
 window.scrapByLineChart = null;
 
 function initializeCharts() {
+    // Destroy existing charts before creating new ones to prevent memory leaks
+    if (window.oeeBreakdownChart) window.oeeBreakdownChart.destroy();
+    if (window.wasteTrendChart) window.wasteTrendChart.destroy();
+    if (window.scrapByLineChart) window.scrapByLineChart.destroy();
+
     // OEE Breakdown Chart (Horizontal Bar Chart)
     const oeeBreakdownCtx = document.getElementById('oee-breakdown-chart').getContext('2d');
     window.oeeBreakdownChart = new Chart(oeeBreakdownCtx, {
@@ -484,6 +489,17 @@ function renderProductionHeatmap(enterprises) {
 function connectWebSocket() {
     console.log('🔌 Connecting to backend...');
 
+    // Clean up existing WebSocket to prevent memory leaks
+    if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+            ws.close();
+        }
+    }
+
     ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
@@ -884,6 +900,13 @@ function updateConnectionStatus(connected) {
     }
 }
 
+// Helper function to escape HTML and prevent XSS attacks
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Add MQTT message to the stream display
 function addMQTTMessageToStream(message) {
     // Don't add messages when stream is paused
@@ -917,10 +940,16 @@ function addMQTTMessageToStream(message) {
 
     line.setAttribute('data-event-type', eventType);
 
+    // Use escapeHtml to prevent XSS attacks on user-controlled content
+    const escapedTopic = escapeHtml(message.topic);
+    const escapedPayload = typeof message.payload === 'object'
+        ? escapeHtml(JSON.stringify(message.payload))
+        : escapeHtml(String(message.payload));
+
     line.innerHTML = `
         <span class="stream-timestamp">[${timestamp}]</span>
-        <span class="stream-topic">${message.topic}</span>
-        <span class="stream-value">${typeof message.payload === 'object' ? JSON.stringify(message.payload) : message.payload}</span>
+        <span class="stream-topic">${escapedTopic}</span>
+        <span class="stream-value">${escapedPayload}</span>
     `;
 
     // Check if user is at bottom before adding new message
@@ -998,11 +1027,16 @@ function addClaudeInsight(insight) {
         ? `<span style="color: var(--accent-red)">⚠ ${insight.anomalies.length} anomalies</span> • `
         : '';
 
+    // Escape user-controlled content to prevent XSS
+    const escapedInsightText = escapeHtml(insightText);
+    const escapedConfidence = escapeHtml(String(insight.confidence || 'N/A'));
+    const escapedSeverity = escapeHtml(String(insight.severity));
+
     insightEl.innerHTML = `
-        <div class="insight-text">${insightText}</div>
+        <div class="insight-text">${escapedInsightText}</div>
         <div class="insight-meta">
-            ${anomalyInfo}Confidence: ${insight.confidence || 'N/A'} •
-            Priority: ${insight.severity} •
+            ${anomalyInfo}Confidence: ${escapedConfidence} •
+            Priority: ${escapedSeverity} •
             Analyzed ${dataInfo} •
             ${new Date(insight.timestamp).toLocaleTimeString()}
         </div>
@@ -1255,13 +1289,16 @@ function updateActiveAlerts() {
         const severityColor = severityColors[severity];
         const alertClass = severity === 'high' ? '' : severity === 'medium' ? 'warning' : 'info';
 
+        // Escape user-controlled content to prevent XSS
+        const escapedText = escapeHtml(anomaly.text);
+
         return `
             <div class="alert-item ${alertClass}">
                 <div class="alert-header">
                     <span class="alert-severity" style="color: ${severityColor};">${severity.toUpperCase()}</span>
                     <span class="alert-time">${new Date(anomaly.timestamp).toLocaleTimeString()}</span>
                 </div>
-                <div class="alert-message">${anomaly.text}</div>
+                <div class="alert-message">${escapedText}</div>
             </div>
         `;
     }).join('');
@@ -1361,8 +1398,12 @@ function filterInsights(filterType, clickedTab) {
             state.anomalies.forEach(anomaly => {
                 const el = document.createElement('div');
                 el.className = 'anomaly-item';
+
+                // Escape user-controlled content to prevent XSS
+                const escapedText = escapeHtml(anomaly.text);
+
                 el.innerHTML = `
-                    <div>${anomaly.text}</div>
+                    <div>${escapedText}</div>
                     <div class="anomaly-time">${new Date(anomaly.timestamp).toLocaleTimeString()}</div>
                 `;
                 // Add click handler to open modal with static anomaly snapshot
