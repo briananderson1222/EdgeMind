@@ -1627,9 +1627,13 @@ function broadcastToClients(message) {
 app.get('/health', async (req, res) => {
   let influxOk = false;
   try {
-    await influxDB.ping();
+    // Execute a minimal query to verify connectivity
+    const query = 'buckets() |> limit(n: 1)';
+    await queryApi.collectRows(query);
     influxOk = true;
-  } catch (e) {}
+  } catch (e) {
+    console.error('InfluxDB health check failed:', e.message);
+  }
 
   res.json({
     status: 'online',
@@ -2175,6 +2179,10 @@ app.get('/api/waste/by-line', async (req, res) => {
     console.error('Waste by line endpoint error:', error);
     res.status(500).json({
       error: 'Failed to query waste by line',
+      message: error.message
+    });
+  }
+});
 
 // =============================================================================
 // CMMS INTEGRATION ENDPOINTS
