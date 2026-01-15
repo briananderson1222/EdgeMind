@@ -6,6 +6,7 @@
     <title>EdgeMind - LIVE</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -1075,7 +1076,8 @@
 
         /* Quality Metrics Panel */
         .quality-panel {
-            grid-column: span 4;
+            grid-column: span 6;
+            min-height: 450px;
         }
 
         .quality-grid {
@@ -1849,19 +1851,19 @@
             <div class="card factory-overview">
                 <div class="card-title">Virtual Factory Selection</div>
                 <div class="factory-selector">
-                    <div class="factory-btn active" onclick="selectFactory('ALL')">
+                    <div class="factory-btn active" onclick="selectFactory('ALL', event)">
                         <div>ALL ENTERPRISES</div>
                         <div class="factory-status">Combined View • Online</div>
                     </div>
-                    <div class="factory-btn" onclick="selectFactory('A')">
+                    <div class="factory-btn" onclick="selectFactory('A', event)">
                         <div>ENTERPRISE A</div>
                         <div class="factory-status">Glass Manufacturing • Online</div>
                     </div>
-                    <div class="factory-btn" onclick="selectFactory('B')">
+                    <div class="factory-btn" onclick="selectFactory('B', event)">
                         <div>ENTERPRISE B</div>
                         <div class="factory-status">Multi-Site Beverage • Online</div>
                     </div>
-                    <div class="factory-btn" onclick="selectFactory('C')">
+                    <div class="factory-btn" onclick="selectFactory('C', event)">
                         <div>ENTERPRISE C</div>
                         <div class="factory-status">Biotech Facility • Online</div>
                     </div>
@@ -2018,14 +2020,6 @@
             <!-- Production Line OEE -->
             <div class="card line-oee-panel">
                 <div class="card-title">Production Line OEE</div>
-                <div class="line-selector">
-                    <select id="line-enterprise-select" onchange="handleLineEnterpriseChange()">
-                        <option value="ALL">All Enterprises</option>
-                        <option value="Enterprise A">Enterprise A</option>
-                        <option value="Enterprise B">Enterprise B</option>
-                        <option value="Enterprise C">Enterprise C</option>
-                    </select>
-                </div>
                 <div class="line-oee-grid" id="line-oee-grid">
                     <div class="heatmap-loading">Loading line OEE...</div>
                 </div>

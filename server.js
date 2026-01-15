@@ -3,9 +3,11 @@ const mqtt = require('mqtt');
 const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
 const WebSocket = require('ws');
 const express = require('express');
-const { influxDB, writeApi, queryApi, Point, parseTopicToInflux } = require('./lib/influx/client');
+const { influxDB, writeApi, queryApi, Point, parseTopicToInflux, writeSparkplugMetric } = require('./lib/influx/client');
 const { createCmmsProvider } = require('./lib/cmms-interface');
 const aiModule = require('./lib/ai');
+const vectorStore = require('./lib/vector');
+const { isSparkplugTopic, decodePayload, extractMetrics } = require('./lib/sparkplug/decoder');
 
 // Foundation modules
 const CONFIG = require('./lib/config');
@@ -97,11 +99,19 @@ mqttClient.on('connect', async () => {
     console.warn('Failed to warm up schema cache on startup:', error.message);
   }
 
+  // Initialize vector store for anomaly persistence (RAG)
+  try {
+    await vectorStore.init({ bedrockClient });
+  } catch (vectorError) {
+    console.warn('Vector store initialization failed (continuing without RAG):', vectorError.message);
+  }
+
   // Initialize AI module with runtime dependencies
   aiModule.init({
     broadcast: broadcastToClients,
     cmms: cmmsProvider,
-    bedrockClient
+    bedrockClient,
+    vectorStore
   });
 
   // Start the agentic trend analysis loop
@@ -117,10 +127,65 @@ mqttClient.on('error', (error) => {
 // Handle incoming MQTT messages
 mqttClient.on('message', async (topic, message) => {
   const timestamp = new Date().toISOString();
-  const payload = message.toString();
 
   factoryState.stats.messageCount++;
   factoryState.stats.lastUpdate = timestamp;
+
+  // SPARKPLUG B PROTOCOL HANDLING
+  // Check if this is a Sparkplug B message (topic starts with spBv1.0/)
+  if (isSparkplugTopic(topic)) {
+    try {
+      // Decode the Sparkplug protobuf payload
+      const decodedPayload = decodePayload(message);
+
+      // Extract normalized metrics from the payload
+      const metrics = extractMetrics(topic, decodedPayload);
+
+      // Write each metric to InfluxDB
+      for (const metric of metrics) {
+        try {
+          const point = writeSparkplugMetric(metric);
+          writeApi.writePoint(point);
+          factoryState.stats.influxWrites++;
+        } catch (writeError) {
+          factoryState.stats.influxWriteErrors = (factoryState.stats.influxWriteErrors || 0) + 1;
+          if (factoryState.stats.influxWriteErrors % 100 === 1) {
+            console.error(`Sparkplug metric write error: ${writeError.message}`);
+          }
+        }
+      }
+
+      // Broadcast to WebSocket clients (throttled - every 10th message)
+      if (factoryState.stats.messageCount % 10 === 0 && metrics.length > 0) {
+        // Format Sparkplug message for frontend display
+        const displayMetrics = metrics.slice(0, 5).map(m =>
+          `${m.name}=${m.value} (${m.valueType})`
+        ).join(', ');
+
+        broadcastToClients({
+          type: 'mqtt_message',
+          data: {
+            timestamp,
+            topic,
+            payload: `[Sparkplug B] ${metrics.length} metrics: ${displayMetrics}${metrics.length > 5 ? '...' : ''}`,
+            id: `msg_${Date.now()}_${Math.random()}`,
+            protocol: 'sparkplug_b'
+          }
+        });
+      }
+
+      // Early return - skip JSON processing for Sparkplug messages
+      return;
+
+    } catch (sparkplugError) {
+      // Log Sparkplug decoding errors but don't crash
+      console.error(`Sparkplug decode error for topic ${topic}:`, sparkplugError.message);
+      return; // EXIT EARLY - don't try JSON parsing on binary data
+    }
+  }
+
+  // STANDARD JSON/TEXT PROCESSING (non-Sparkplug messages)
+  const payload = message.toString();
 
   const mqttMessage = {
     timestamp,
