@@ -37,6 +37,7 @@ Environment variables are stored in `/.env` (project root). The template is at `
 | `MQTT_PASSWORD` | MQTT password | Yes |
 | `AWS_PROFILE` | AWS profile for Bedrock | No |
 | `AWS_REGION` | AWS region | No (default: us-east-1) |
+| `CHROMA_PORT` | ChromaDB port | No (default: 8000) |
 | `DISABLE_INSIGHTS` | Disable AI insights | No (default: false) |
 
 ### Commands
@@ -68,6 +69,7 @@ docker compose --env-file ../.env -f docker-compose.local.yml down -v
 | API Health | http://localhost:3000/health |
 | API Trends | http://localhost:3000/api/trends |
 | InfluxDB UI | http://localhost:8086 |
+| ChromaDB API | http://localhost:8000 |
 
 ## AWS Deployment
 

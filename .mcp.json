@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "quint-code": {
+      "command": "/Users/stefanbekker/.local/bin/quint-code",
+      "args": [
+        "serve"
+      ],
+      "cwd": "/Users/stefanbekker/Projects/EdgeMind",
+      "env": {
+        "QUINT_PROJECT_ROOT": "/Users/stefanbekker/Projects/EdgeMind"
+      }
+    }
+  }
+}
