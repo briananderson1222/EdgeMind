@@ -14,7 +14,10 @@ RUN npm ci --only=production
 # Copy application code
 COPY server.js ./
 COPY index.html ./
+COPY styles.css ./
+COPY app.js ./
 COPY factory-command-center.html ./
+COPY lib/ ./lib/
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
