@@ -28,6 +28,24 @@ Project configuration, constants, and frequently-needed reference information.
 - **Bind Mounts**: `server.js`, `index.html` (read-only)
 - **NOT Bind-Mounted**: `lib/`, `styles.css`, `app.js` (must use `docker cp`)
 
+#### ⚠️ CRITICAL: Files That Must Be In Container
+These files are NOT bind-mounted and must be copied manually after container recreation:
+```
+lib/          # Backend modules - REQUIRED or server crashes
+styles.css    # Frontend styles - REQUIRED or UI breaks
+app.js        # Frontend JavaScript - REQUIRED or dashboard non-functional
+```
+**Recovery command:**
+```bash
+ssh -i $SSH_KEY $EC2_HOST "sudo docker cp ~/app/lib edgemind-backend:/app/ && sudo docker cp ~/app/styles.css edgemind-backend:/app/ && sudo docker cp ~/app/app.js edgemind-backend:/app/"
+```
+**Dockerfile must include:**
+```dockerfile
+COPY lib/ ./lib/
+COPY styles.css ./
+COPY app.js ./
+```
+
 ### InfluxDB
 - **Local Port**: `8086`
 - **Username**: `admin`
