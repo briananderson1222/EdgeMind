@@ -25,7 +25,7 @@ echo ""
 # Prerequisites Check
 # -----------------------------------------------------------------------------
 check_prerequisites() {
-    echo -e "${YELLOW}[1/4] Checking prerequisites...${NC}"
+    echo -e "${YELLOW}[1/5] Checking prerequisites...${NC}"
 
     local missing=0
 
@@ -68,7 +68,7 @@ check_prerequisites() {
 # Environment Setup
 # -----------------------------------------------------------------------------
 setup_environment() {
-    echo -e "${YELLOW}[2/4] Setting up environment...${NC}"
+    echo -e "${YELLOW}[2/5] Setting up environment...${NC}"
 
     if [ ! -f "$PROJECT_ROOT/.env" ]; then
         if [ -f "$PROJECT_ROOT/.env.template" ]; then
@@ -139,9 +139,11 @@ setup_environment() {
 # Docker Operations (Idempotent)
 # -----------------------------------------------------------------------------
 deploy_services() {
-    echo -e "${YELLOW}[3/4] Deploying services...${NC}"
+    echo -e "${YELLOW}[3/5] Deploying services...${NC}"
 
-    # Pull latest InfluxDB image
+    # Pull latest images
+    echo -e "  Pulling ChromaDB image..."
+    docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml pull chromadb 2>/dev/null || true
     echo -e "  Pulling InfluxDB image..."
     docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml pull influxdb 2>/dev/null || true
 
@@ -161,12 +163,32 @@ deploy_services() {
 # Health Check
 # -----------------------------------------------------------------------------
 wait_for_services() {
-    echo -e "${YELLOW}[4/4] Waiting for services to be healthy...${NC}"
+    echo -e "${YELLOW}[4/5] Waiting for services to be healthy...${NC}"
 
     local max_attempts=30
     local attempt=0
 
+    # Wait for ChromaDB
+    echo -n "  ChromaDB: "
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -sf http://localhost:8000/api/v1/heartbeat > /dev/null 2>&1; then
+            echo -e "${GREEN}healthy${NC}"
+            break
+        fi
+        attempt=$((attempt + 1))
+        echo -n "."
+        sleep 2
+    done
+
+    if [ $attempt -eq $max_attempts ]; then
+        echo -e "${RED}failed${NC}"
+        echo -e "${RED}  ChromaDB failed to start. Logs:${NC}"
+        docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml logs chromadb --tail=10
+        exit 1
+    fi
+
     # Wait for InfluxDB
+    attempt=0
     echo -n "  InfluxDB: "
     while [ $attempt -lt $max_attempts ]; do
         if curl -sf http://localhost:8086/health > /dev/null 2>&1; then
@@ -224,6 +246,7 @@ print_status() {
     echo "  API Health:     http://localhost:3000/health"
     echo "  API Trends:     http://localhost:3000/api/trends"
     echo "  InfluxDB UI:    http://localhost:8086"
+    echo "  ChromaDB API:   http://localhost:8000"
     echo ""
     echo -e "${YELLOW}Useful commands:${NC}"
     echo "  View logs:      docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml logs -f"

@@ -2,6 +2,24 @@
 # Usage: ./local-deploy.sh (recommended) or docker compose -f docker-compose.local.yml up -d
 
 services:
+  chromadb:
+    image: chromadb/chroma:0.4.24
+    container_name: edgemind-chromadb
+    ports:
+      - "${CHROMA_PORT:-8000}:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chromadb-data:/chroma/chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   influxdb:
     image: influxdb:2.7
     container_name: edgemind-influxdb
@@ -42,6 +60,8 @@ services:
       - INFLUXDB_TOKEN=${INFLUXDB_ADMIN_TOKEN}
       - INFLUXDB_ORG=${INFLUXDB_ORG:-proveit}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-factory}
+      # ChromaDB Configuration (uses internal Docker network)
+      - CHROMA_URL=http://chromadb:8000
       # AI Configuration (AWS Bedrock)
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - AWS_PROFILE=${AWS_PROFILE:-default}
@@ -56,8 +76,12 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
+      chromadb:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
+  chromadb-data:
+    name: edgemind-chromadb-data
   influxdb-data:
     name: edgemind-influxdb-data
