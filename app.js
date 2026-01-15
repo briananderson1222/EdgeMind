@@ -46,11 +46,10 @@ const state = {
     messageRateHistory: [],
     topicCounts: {},
     enterpriseCounts: { 'Enterprise A': 0, 'Enterprise B': 0, 'Enterprise C': 0 },
-    selectedFactory: 'ALL',  // 'ALL', 'A', 'B', or 'C'
+    selectedFactory: 'ALL',  // 'ALL', 'Enterprise A', 'Enterprise B', or 'Enterprise C'
     insightFilter: 'all',  // 'all' or 'anomalies'
     eventFilter: 'all',  // 'all', 'oee', 'state', 'alarm'
     equipmentStates: new Map(),  // Map of equipment ID to state
-    selectedLineEnterprise: 'ALL',  // Selected enterprise for line OEE widget
     streamPaused: false,  // Pause/resume live stream
     anomalyFilters: [],  // User-defined anomaly filter rules
     thresholdSettings: {
@@ -249,6 +248,16 @@ function updateCharts() {
 // Fetch OEE breakdown and update chart
 async function fetchOEEBreakdown() {
     try {
+        // Hide chart if filtering to single enterprise
+        const oeeBreakdownContainer = document.getElementById('oee-breakdown-chart');
+        const chartCard = oeeBreakdownContainer ? oeeBreakdownContainer.closest('.card') : null;
+        if (chartCard && state.selectedFactory !== 'ALL') {
+            chartCard.style.display = 'none';
+            return;
+        } else if (chartCard) {
+            chartCard.style.display = '';
+        }
+
         const response = await fetch('/api/oee/breakdown');
         const data = await response.json();
 
@@ -271,7 +280,11 @@ async function fetchOEEBreakdown() {
 // Fetch waste trends and update chart
 async function fetchWasteTrends() {
     try {
-        const response = await fetch('/api/waste/trends');
+        const enterprise = getEnterpriseParam();
+        const url = enterprise !== 'ALL'
+            ? `/api/waste/trends?enterprise=${encodeURIComponent(enterprise)}`
+            : '/api/waste/trends';
+        const response = await fetch(url);
         const data = await response.json();
 
         if (window.wasteTrendChart && data.linesSummary) {
@@ -320,7 +333,11 @@ async function fetchWasteTrends() {
 // Fetch scrap by line and update chart
 async function fetchScrapByLine() {
     try {
-        const response = await fetch('/api/waste/by-line');
+        const enterprise = getEnterpriseParam();
+        const url = enterprise !== 'ALL'
+            ? `/api/waste/by-line?enterprise=${encodeURIComponent(enterprise)}`
+            : '/api/waste/by-line';
+        const response = await fetch(url);
         const data = await response.json();
 
         if (window.scrapByLineChart && data.lines) {
@@ -344,7 +361,11 @@ async function fetchScrapByLine() {
 // Fetch and render quality metrics from waste/trends summary
 async function fetchQualityMetrics() {
     try {
-        const response = await fetch('/api/waste/trends');
+        const enterprise = getEnterpriseParam();
+        const url = enterprise !== 'ALL'
+            ? `/api/waste/trends?enterprise=${encodeURIComponent(enterprise)}`
+            : '/api/waste/trends';
+        const response = await fetch(url);
         const data = await response.json();
 
         const grid = document.getElementById('quality-grid');
@@ -436,7 +457,12 @@ async function fetchQualityMetrics() {
 // Fetch factory status and render production heatmap
 async function fetchFactoryStatus() {
     try {
-        const response = await fetch('/api/factory/status');
+        const enterprise = getEnterpriseParam();
+        const url = enterprise !== 'ALL'
+            ? `/api/factory/status?enterprise=${encodeURIComponent(enterprise)}`
+            : '/api/factory/status';
+
+        const response = await fetch(url);
         const data = await response.json();
 
         if (data.enterprises) {
@@ -563,11 +589,11 @@ function handleServerMessage(message) {
             let messages = message.data.recentMessages || [];
 
             // Filter by selected enterprise
-            if (state.selectedFactory !== 'ALL') {
+            const enterprise = getEnterpriseParam();
+            if (enterprise !== 'ALL') {
                 messages = messages.filter(msg => {
                     const topic = msg.topic || '';
-                    const match = topic.match(/^Enterprise ([ABC])\//i);
-                    return match && match[1].toUpperCase() === state.selectedFactory;
+                    return topic.startsWith(enterprise + '/');
                 });
             }
 
@@ -625,10 +651,10 @@ function handleServerMessage(message) {
             const topic = message.data.topic || '';
 
             // Filter by selected enterprise
-            if (state.selectedFactory !== 'ALL') {
+            const mqttEnterprise = getEnterpriseParam();
+            if (mqttEnterprise !== 'ALL') {
                 // Topics start with "Enterprise A/", "Enterprise B/", or "Enterprise C/"
-                const enterpriseMatch = topic.match(/^Enterprise ([ABC])\//i);
-                if (!enterpriseMatch || enterpriseMatch[1].toUpperCase() !== state.selectedFactory) {
+                if (!topic.startsWith(mqttEnterprise + '/')) {
                     return; // Skip messages not matching filter
                 }
             }
@@ -702,7 +728,11 @@ function handleServerMessage(message) {
 // Fetch equipment states from API
 async function fetchEquipmentStates() {
     try {
-        const response = await fetch('/api/equipment/states');
+        const enterprise = getEnterpriseParam();
+        const url = enterprise !== 'ALL'
+            ? `/api/equipment/states?enterprise=${encodeURIComponent(enterprise)}`
+            : '/api/equipment/states';
+        const response = await fetch(url);
         const data = await response.json();
 
         if (data.states && Array.isArray(data.states)) {
@@ -804,15 +834,16 @@ function updateEquipmentStateGrid() {
 }
 
 // Fetch line OEE from API
-async function fetchLineOEE(enterprise = 'ALL') {
+async function fetchLineOEE() {
     try {
         const response = await fetch('/api/oee/lines');
         const data = await response.json();
 
         if (data.lines && Array.isArray(data.lines)) {
-            // Filter by enterprise on client side (server returns all data)
+            // Filter by global selectedFactory
+            const enterprise = getEnterpriseParam();
             let filteredLines = data.lines;
-            if (enterprise && enterprise !== 'ALL') {
+            if (enterprise !== 'ALL') {
                 filteredLines = data.lines.filter(line => line.enterprise === enterprise);
             }
             renderLineOEEGrid(filteredLines);
@@ -883,13 +914,14 @@ function renderLineOEEGrid(lines) {
     }).join('');
 }
 
-// Handle line enterprise selector change
-function handleLineEnterpriseChange() {
-    const selector = document.getElementById('line-enterprise-select');
-    if (selector) {
-        state.selectedLineEnterprise = selector.value;
-        fetchLineOEE(state.selectedLineEnterprise);
-    }
+// Helper to convert state.selectedFactory to proper enterprise parameter
+function getEnterpriseParam() {
+    if (state.selectedFactory === 'ALL') return 'ALL';
+    if (state.selectedFactory === 'A') return 'Enterprise A';
+    if (state.selectedFactory === 'B') return 'Enterprise B';
+    if (state.selectedFactory === 'C') return 'Enterprise C';
+    // Already in full format
+    return state.selectedFactory;
 }
 
 // Update connection status indicator
@@ -1135,10 +1167,28 @@ function updateMetrics() {
         activeSensors.textContent = state.uniqueTopics.size.toLocaleString();
     }
 
-    // Update anomaly count from state.anomalies
+    // Update anomaly count - filter by selected enterprise
     const anomalyCount = document.getElementById('anomaly-count');
     if (anomalyCount) {
-        anomalyCount.textContent = state.anomalies.length;
+        const enterprise = getEnterpriseParam();
+        let filteredAnomalies = state.anomalies;
+
+        if (enterprise !== 'ALL') {
+            // Filter anomalies by enterprise
+            filteredAnomalies = state.anomalies.filter(anomaly => {
+                // Check if anomaly has enterprise field (new format)
+                if (anomaly.enterprise) {
+                    return anomaly.enterprise === enterprise;
+                }
+                // Fallback: check if anomaly text contains enterprise name
+                if (anomaly.text && anomaly.text.includes(enterprise)) {
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        anomalyCount.textContent = filteredAnomalies.length;
     }
 }
 
@@ -1208,12 +1258,14 @@ function displayClaudeResponse(data) {
 }
 
 // Factory selection
-function selectFactory(factory) {
+function selectFactory(factory, event) {
     state.selectedFactory = factory;
     document.querySelectorAll('.factory-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    event.target.closest('.factory-btn').classList.add('active');
+    if (event && event.target) {
+        event.target.closest('.factory-btn').classList.add('active');
+    }
 
     // Clear filtered data but preserve sensor count
     state.messages = [];
@@ -1226,9 +1278,8 @@ function selectFactory(factory) {
         window.healthChart.update();
     }
 
-    // Fetch fresh OEE and breakdown for selected enterprise
-    fetchOEE();
-    fetchOEEBreakdown();
+    // Refresh all data for selected enterprise
+    refreshAllData();
 
     // Update metrics display
     updateMetrics();
@@ -1236,11 +1287,23 @@ function selectFactory(factory) {
     console.log('Filtering by factory:', factory);
 }
 
+// Refresh all data cards with current filter
+function refreshAllData() {
+    fetchOEE();
+    fetchOEEBreakdown();
+    fetchFactoryStatus();
+    fetchWasteTrends();
+    fetchScrapByLine();
+    fetchQualityMetrics();
+    fetchEquipmentStates();
+    fetchLineOEE();
+}
+
 // Fetch OEE from API (24h average)
 async function fetchOEE() {
     try {
-        const enterprise = state.selectedFactory;
-        const response = await fetch(`/api/oee?enterprise=${enterprise}`);
+        const enterprise = getEnterpriseParam();
+        const response = await fetch(`/api/oee?enterprise=${encodeURIComponent(enterprise)}`);
         const data = await response.json();
 
         const oeeScore = document.getElementById('oee-score');
@@ -1248,7 +1311,8 @@ async function fetchOEE() {
 
         if (data.average !== null) {
             oeeScore.textContent = data.average.toFixed(1) + '%';
-            oeeStatus.textContent = `${data.period} avg • ${enterprise === 'ALL' ? 'All' : enterprise}`;
+            const displayName = enterprise === 'ALL' ? 'All Enterprises' : enterprise;
+            oeeStatus.textContent = `${data.period} avg • ${displayName}`;
             oeeStatus.className = 'metric-change positive';
 
             // Update scorecard gauge
@@ -1710,7 +1774,7 @@ window.addEventListener('load', () => {
 
     // Fetch equipment states and line OEE
     fetchEquipmentStates();
-    fetchLineOEE(state.selectedLineEnterprise);
+    fetchLineOEE();
 
     // Update message rate every second
     setInterval(updateMessageRate, 1000);
@@ -1725,7 +1789,7 @@ window.addEventListener('load', () => {
 
     // Refresh equipment states and line OEE every 30 seconds
     setInterval(fetchEquipmentStates, 30000);
-    setInterval(() => fetchLineOEE(state.selectedLineEnterprise), 30000);
+    setInterval(fetchLineOEE, 30000);
 });
 
 // Expose askClaudeQuestion globally
