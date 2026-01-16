@@ -36,9 +36,10 @@ class AgentCoreStack(Stack):
     and batch process monitoring.
     """
 
-    # Claude models - Orchestrator uses Sonnet for reasoning, specialists use Haiku for cost
-    ORCHESTRATOR_MODEL = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-    SPECIALIST_MODEL = "anthropic.claude-3-5-haiku-20241022-v1:0"  # ~75% cheaper
+    # Claude models - Use cross-region inference profiles for Bedrock Agents
+    # Orchestrator uses Sonnet for reasoning, specialists use Haiku for cost
+    ORCHESTRATOR_MODEL = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+    SPECIALIST_MODEL = "us.anthropic.claude-3-5-haiku-20241022-v1:0"  # ~75% cheaper
 
     def __init__(
         self,
@@ -76,6 +77,7 @@ class AgentCoreStack(Stack):
         )
 
         # Grant Bedrock model invocation permissions (Sonnet for orchestrator, Haiku for specialists)
+        # Includes both foundation models and cross-region inference profiles
         self.agent_execution_role.add_to_policy(
             iam.PolicyStatement(
                 sid="BedrockInvokeModel",
@@ -85,8 +87,11 @@ class AgentCoreStack(Stack):
                     "bedrock:InvokeModelWithResponseStream",
                 ],
                 resources=[
-                    # Allow all Claude models (Sonnet + Haiku)
-                    f"arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+                    # Foundation models (direct invocation)
+                    "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+                    # Cross-region inference profiles (required for Bedrock Agents)
+                    "arn:aws:bedrock:*::foundation-model/us.anthropic.claude-*",
+                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-*",
                 ]
             )
         )
