@@ -2150,6 +2150,43 @@
         </div>
     </div>
 
+    <!-- Ask Agent Chat Panel -->
+    <div class="chat-panel" id="chat-panel">
+        <div class="chat-header">
+            <div class="chat-title">Ask Agent</div>
+            <button class="chat-close-btn" onclick="toggleChatPanel()">×</button>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+            <div class="chat-welcome">
+                Ask me anything about the factory data. Try one of these:
+            </div>
+            <div class="suggested-questions">
+                <button class="suggested-question" onclick="handleSuggestedQuestion('What is impacting Enterprise B\'s OEE?')">
+                    What is impacting Enterprise B's OEE?
+                </button>
+                <button class="suggested-question" onclick="handleSuggestedQuestion('Which equipment has been down the longest?')">
+                    Which equipment has been down the longest?
+                </button>
+                <button class="suggested-question" onclick="handleSuggestedQuestion('Where is waste coming from in Enterprise A?')">
+                    Where is waste coming from in Enterprise A?
+                </button>
+                <button class="suggested-question" onclick="handleSuggestedQuestion('What is the status of Enterprise C batches?')">
+                    What is the status of Enterprise C batches?
+                </button>
+            </div>
+        </div>
+        <div class="chat-input-container">
+            <input type="text" id="chat-input" class="chat-input" placeholder="Ask about factory data..." />
+            <button class="chat-send-btn" onclick="sendChatMessage()">
+                <span>▶</span>
+            </button>
+        </div>
+    </div>
+
+    <button class="chat-toggle-btn" id="chat-toggle-btn" onclick="toggleChatPanel()">
+        💬 Ask Agent
+    </button>
+
     <!-- Footer -->
     <footer>
         <div class="footer-content">

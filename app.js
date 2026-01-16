@@ -1799,3 +1799,138 @@ window.askClaudeQuestion = function() {
         askClaude(question);
     }
 };
+
+// Chat panel functionality
+let chatSessionId = null;
+let isChatPanelOpen = false;
+
+function toggleChatPanel() {
+    const chatPanel = document.getElementById('chat-panel');
+    const toggleBtn = document.getElementById('chat-toggle-btn');
+
+    if (!chatPanel || !toggleBtn) return;
+
+    isChatPanelOpen = !isChatPanelOpen;
+
+    if (isChatPanelOpen) {
+        chatPanel.classList.add('active');
+        toggleBtn.style.display = 'none';
+
+        // Focus on input
+        const input = document.getElementById('chat-input');
+        if (input) {
+            setTimeout(() => input.focus(), 300);
+        }
+    } else {
+        chatPanel.classList.remove('active');
+        toggleBtn.style.display = 'block';
+    }
+}
+
+function appendToChat(role, message) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    // Remove suggested questions if they exist
+    const suggestedQuestions = chatMessages.querySelector('.suggested-questions');
+    const welcomeMsg = chatMessages.querySelector('.chat-welcome');
+    if (suggestedQuestions) suggestedQuestions.remove();
+    if (welcomeMsg) welcomeMsg.remove();
+
+    const messageEl = document.createElement('div');
+    messageEl.className = `chat-message ${role}`;
+
+    // Escape HTML to prevent XSS
+    const escapedMessage = escapeHtml(message);
+    messageEl.innerHTML = escapedMessage;
+
+    chatMessages.appendChild(messageEl);
+
+    // Auto-scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function askAgent(question) {
+    if (!question || !question.trim()) return;
+
+    try {
+        // Append user message
+        appendToChat('user', question);
+
+        // Show loading indicator
+        appendToChat('loading', 'Agent is thinking...');
+
+        // Send request to backend
+        const response = await fetch('/api/agent/ask', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                question: question,
+                sessionId: chatSessionId
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Remove loading indicator
+        const chatMessages = document.getElementById('chat-messages');
+        const loadingMsg = chatMessages.querySelector('.chat-message.loading');
+        if (loadingMsg) loadingMsg.remove();
+
+        // Store session ID for follow-up questions
+        if (data.sessionId) {
+            chatSessionId = data.sessionId;
+        }
+
+        // Append agent response
+        appendToChat('agent', data.answer || 'Sorry, I could not process your request.');
+
+    } catch (error) {
+        console.error('Failed to ask agent:', error);
+
+        // Remove loading indicator
+        const chatMessages = document.getElementById('chat-messages');
+        const loadingMsg = chatMessages.querySelector('.chat-message.loading');
+        if (loadingMsg) loadingMsg.remove();
+
+        // Show error message
+        appendToChat('agent', 'Sorry, I encountered an error. Please try again later.');
+    }
+}
+
+function sendChatMessage() {
+    const input = document.getElementById('chat-input');
+    if (!input) return;
+
+    const question = input.value.trim();
+    if (!question) return;
+
+    // Clear input
+    input.value = '';
+
+    // Send to agent
+    askAgent(question);
+}
+
+function handleSuggestedQuestion(question) {
+    askAgent(question);
+}
+
+// Setup Enter key for chat input
+document.addEventListener('DOMContentLoaded', () => {
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) {
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+    }
+});
