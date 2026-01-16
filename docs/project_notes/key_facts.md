@@ -128,7 +128,10 @@ sudo docker run -d \
 ### Virtual Factory Broker
 - **Host**: `virtualfactory.proveit.services`
 - **Port**: `1883`
+- **Full URL (for secrets)**: `mqtt://virtualfactory.proveit.services:1883` *(include protocol + port!)*
 - **Topic Pattern**: `Enterprise {A|B|C}/Site{N}/area/machine/component/metric/type`
+
+⚠️ **MQTT_HOST Secret Format**: Must include `mqtt://` protocol prefix AND port number. Without these, the MQTT client will fail with "Missing protocol" error.
 
 ---
 
@@ -190,6 +193,18 @@ sudo docker run -d \
 - Backend uses `@aws-sdk/client-bedrock-runtime` which authenticates via IAM
 - Task role needs `bedrock:InvokeModel` permission on `anthropic.claude-*` models
 - Model ID configured in `lib/config.js` (e.g., `anthropic.claude-3-5-sonnet-20241022-v2:0`)
+
+⚠️ **Bedrock IAM Pattern (Cross-Region)**: Inference profiles route to models in different regions. The IAM policy must use wildcard region (`arn:aws:bedrock:*::foundation-model/...`) to allow cross-region inference. See `backend_stack.py` for the full pattern.
+
+### GitHub Actions CI/CD
+- **OIDC Provider**: `https://token.actions.githubusercontent.com`
+- **IAM Role**: `github-actions-edgemind` (in AWS account)
+- **Required Secrets** (GitHub repo settings):
+  - `AWS_ROLE_ARN` - ARN of the IAM role for OIDC auth
+  - `CLOUDFRONT_DISTRIBUTION_ID` - CloudFront distribution ID for cache invalidation
+- **Workflows**:
+  - `.github/workflows/deploy-frontend.yml` - S3 sync + CloudFront invalidation
+  - `.github/workflows/deploy-backend.yml` - ECR build + ECS deploy
 
 ---
 

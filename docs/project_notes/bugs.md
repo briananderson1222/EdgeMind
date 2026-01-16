@@ -153,6 +153,15 @@ This file tracks bugs encountered and their solutions for future reference.
   ```
 - **Prevention**: When routing paths in CloudFront, always add both exact path and wildcard pattern if the endpoint might be accessed with or without trailing content.
 
+### 2026-01-16 - MQTT Secret Missing Protocol Prefix
+- **Issue**: Backend failed to connect to MQTT broker with "Missing protocol" error
+- **Root Cause**: MQTT_HOST secret contained `virtualfactory.proveit.services` without the `mqtt://` protocol prefix and port
+- **Solution**: Update secret to include full URL with protocol and port:
+  ```json
+  {"host":"mqtt://virtualfactory.proveit.services:1883", ...}
+  ```
+- **Prevention**: MQTT host values must always include the protocol (`mqtt://` or `mqtts://`) and port. Document the expected format in key_facts.md.
+
 ### 2026-01-15 - AWS Secrets Manager: Special Characters in Passwords
 - **Issue**: Backend ECS task failed with "invalid character '!' in string escape code" when retrieving MQTT secret
 - **Root Cause**: Password containing `!` was escaped as `\!` when using inline JSON in shell command. Bash history expansion and shell escaping mangled the password.
