@@ -1,42 +1,33 @@
 # Dependencies
-node_modules
+node_modules/
 
 # Git
-.git
+.git/
 .gitignore
 
-# GitHub
-.github
-
 # Documentation
+docs/
 *.md
-!README.md
 
-# Environment files
+# Development files
 .env*
-!.env.template
+.vscode/
+.idea/
 
 # Infrastructure
 infra/
 
-# Logs
+# CI/CD
+.github/
+
+# Quint FPF
+.quint/
+
+# Test files
+*.test.js
+*.spec.js
+__tests__/
+
+# Local development
 *.log
-npm-debug.log*
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS files
 .DS_Store
-Thumbs.db
-
-# Test coverage
-coverage/
-.nyc_output/
-
-# Build artifacts
-dist/
-build/
