@@ -251,4 +251,65 @@ This file logs architectural decisions (ADRs) with context and trade-offs.
 
 ---
 
+### ADR-008: AWS AgentCore Multi-Agent Architecture (2026-01-16)
+
+**Context:**
+- Dashboard needs to answer complex analytical questions:
+  1. "What is impacting my OEE?" - Root cause analysis
+  2. "What is the status of my equipment?" - Equipment correlation with AI
+  3. "Where is wastage coming from?" - Waste attribution
+  4. "Why no OEE for Enterprise C?" - Alternative metrics for batch processing
+- Existing 30-second Claude loop provides real-time insights but lacks:
+  - Multi-step reasoning for complex questions
+  - Tool use during analysis
+  - Domain specialization per question type
+- Enterprise C uses ISA-88 batch processing, not continuous OEE
+
+**Decision:**
+- Implement **AWS Bedrock Agents with multi-agent collaboration**
+- Deploy 4 specialized agents:
+  - **OEE Analyst Agent**: A×P×Q understanding, limiting factor identification
+  - **Equipment Health Agent**: State monitoring, downtime tracking, maintenance prediction
+  - **Waste Attribution Agent**: Defect patterns, root cause analysis by line
+  - **Batch Process Agent**: Enterprise C ISA-88 metrics, phase tracking, yield rates
+- Orchestrator agent routes questions to specialists
+- Triggered on-demand via `/api/agent/ask` endpoint (not continuous loop)
+- ChromaDB provides shared memory for agent context
+
+**Alternatives Considered:**
+- Enhanced Single-Agent Loop → Rejected: User chose multi-agent despite lower complexity option. Single-turn reasoning insufficient for complex questions.
+- Hybrid Simple Loop + On-Demand Agents → Rejected: User explicitly chose full AgentCore over incremental approach.
+
+**Rationale (from Quint FPF analysis):**
+1. **R_eff: 1.00** - All validation checks passed
+2. **Multi-agent GA (March 2025)**: AWS Blog confirms production-ready
+3. **CDK Support**: Both CfnAgent (L1) and Agent (L2) constructs available
+4. **Lambda Action Groups**: Well-documented tool execution pattern
+5. **Pricing**: Consumption-based, no per-invocation charge for InvokeAgent
+
+**Consequences:**
+- ✅ Multi-step reasoning for complex questions
+- ✅ Specialized domain knowledge per agent
+- ✅ Tool use during analysis (InfluxDB queries, ChromaDB retrieval)
+- ✅ Scalable architecture for future question types
+- ⚠️ 4-5 day implementation timeline (tight for demo)
+- ⚠️ New infrastructure: Lambdas, IAM roles, OpenAPI schemas
+- ⚠️ Debugging complexity with multiple agents
+
+**Implementation:**
+1. Create `infra/stacks/agentcore_stack.py` CDK stack
+2. Create Lambda Action Group functions (`lib/agentcore/tools.js` or Python)
+3. Define OpenAPI schemas for tools
+4. Add `/api/agent/ask` endpoint to `server.js`
+5. Build frontend chat panel for "Ask Agent" UI
+
+**Fallback:**
+If blocked, can pivot to enhanced-single-agent-loop in 1-2 days.
+
+**DRR Reference:** `.quint/decisions/DRR-2026-01-16-aws-agentcore-multi-agent-architecture-for-edgemind-intelligence.md`
+
+**Revisit:** When AgentCore Memory becomes GA or if demo timeline requires simplification
+
+---
+
 <!-- Add new decisions above this line -->
