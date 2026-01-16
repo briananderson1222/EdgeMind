@@ -133,6 +133,18 @@ class BackendStack(Stack):
             )
         )
 
+        # Grant Bedrock Agent invocation permissions (for AgentCore multi-agent system)
+        task_definition.task_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["bedrock:InvokeAgent"],
+                resources=[
+                    f"arn:aws:bedrock:{self.region}:{self.account}:agent/*",
+                    f"arn:aws:bedrock:{self.region}:{self.account}:agent-alias/*",
+                ]
+            )
+        )
+
         # Grant Secrets Manager read permissions
         mqtt_secret.grant_read(task_definition.task_role)
         influxdb_secret.grant_read(task_definition.task_role)
@@ -164,6 +176,9 @@ class BackendStack(Stack):
                 # ChromaDB service discovery URL (via Cloud Map)
                 "CHROMA_HOST": "chromadb.edgemind.local",
                 "CHROMA_PORT": "8000",
+                # AgentCore (Bedrock Agents) configuration
+                "AGENTCORE_AGENT_ID": "HRR41EHLP7",
+                "AGENTCORE_ALIAS_ID": "YTCP5LUQFT",
             },
             secrets={
                 # MQTT credentials from Secrets Manager
