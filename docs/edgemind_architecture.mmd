@@ -17,20 +17,34 @@ flowchart TB
         MQTTCLIENT["MQTT Client<br/>(Ingestion)"]
         ROUTER["Data Router"]
         WSSERVER["WebSocket<br/>Server"]
-        AGENT["Agentic Loop<br/>(30s cycle)"]
+        AGENT["Simple Loop<br/>(30s cycle)"]
+        AGENTAPI["Agent API<br/>POST /api/agent/ask"]
     end
 
     subgraph storage["TIME-SERIES STORAGE"]
         INFLUX[("InfluxDB<br/>bucket: factory<br/>5-min window")]
     end
 
-    subgraph ai["AI ANALYSIS - AWS Bedrock"]
+    subgraph simpleai["SIMPLE CLAUDE LOOP"]
         CLAUDE{{"Claude Sonnet 4<br/>Trend Analysis<br/>Anomaly Detection"}}
+    end
+
+    subgraph agentcore["AGENTCORE - Multi-Agent System"]
+        direction TB
+        ORCH{{"Orchestrator<br/>(Supervisor)"}}
+        subgraph specialists["Specialist Agents"]
+            direction LR
+            OEE["OEE<br/>Analyst"]
+            EQUIP["Equipment<br/>Health"]
+            WASTE["Waste<br/>Analyst"]
+            BATCH["Batch<br/>Process"]
+        end
+        LAMBDA["Lambda<br/>Action Groups"]
     end
 
     subgraph outputs["OUTPUTS"]
         direction LR
-        DASHBOARD["Live Dashboard<br/>(WebSocket Client)"]
+        DASHBOARD["Live Dashboard<br/>(WebSocket + Ask Agent)"]
         CMMS["MaintainX CMMS<br/>(Work Orders)"]
     end
 
@@ -45,12 +59,27 @@ flowchart TB
     ROUTER -->|"HTTP POST metrics"| INFLUX
     ROUTER --> WSSERVER
 
-    %% Agentic Loop
+    %% Simple Agentic Loop (Continuous)
     INFLUX -.->|"Flux Query"| AGENT
     AGENT -->|"Bedrock API<br/>JSON trends"| CLAUDE
     CLAUDE -->|"JSON insights<br/>anomalies"| AGENT
     AGENT --> WSSERVER
     AGENT -->|"High-severity<br/>anomalies"| CMMS
+
+    %% AgentCore Flow (On-Demand)
+    DASHBOARD -->|"User question"| AGENTAPI
+    AGENTAPI -->|"Invoke agent"| ORCH
+    ORCH -->|"Route to specialist"| OEE
+    ORCH -->|"Route to specialist"| EQUIP
+    ORCH -->|"Route to specialist"| WASTE
+    ORCH -->|"Route to specialist"| BATCH
+    OEE --> LAMBDA
+    EQUIP --> LAMBDA
+    WASTE --> LAMBDA
+    BATCH --> LAMBDA
+    LAMBDA -->|"Tool calls"| INFLUX
+    LAMBDA -->|"Response"| AGENTAPI
+    AGENTAPI -->|"Agent response"| DASHBOARD
 
     %% Real-time Output
     WSSERVER -->|"Real-time updates"| DASHBOARD
@@ -60,7 +89,9 @@ flowchart TB
     style mqtt fill:#FFF3E0,stroke:#E65100,stroke-width:2px
     style edge fill:#ECEFF1,stroke:#607D8B,stroke-width:2px
     style storage fill:#E3F2FD,stroke:#1976D2,stroke-width:2px
-    style ai fill:#E0F2F1,stroke:#00695C,stroke-width:2px
+    style simpleai fill:#E0F2F1,stroke:#00695C,stroke-width:2px
+    style agentcore fill:#FFF8E1,stroke:#FF8F00,stroke-width:2px
+    style specialists fill:#FFECB3,stroke:#FFA000,stroke-width:1px
     style outputs fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px
 
     style GLASS fill:#4CAF50,stroke:#2E7D32,stroke-width:2px,color:#fff
@@ -71,7 +102,14 @@ flowchart TB
     style ROUTER fill:#78909C,stroke:#455A64,stroke-width:2px,color:#fff
     style WSSERVER fill:#78909C,stroke:#455A64,stroke-width:2px,color:#fff
     style AGENT fill:#FF5722,stroke:#BF360C,stroke-width:2px,color:#fff
+    style AGENTAPI fill:#FF7043,stroke:#D84315,stroke-width:2px,color:#fff
     style INFLUX fill:#5C6BC0,stroke:#303F9F,stroke-width:2px,color:#fff
     style CLAUDE fill:#00897B,stroke:#004D40,stroke-width:2px,color:#fff
+    style ORCH fill:#FFB300,stroke:#FF8F00,stroke-width:2px,color:#000
+    style OEE fill:#FFD54F,stroke:#FFA000,stroke-width:2px,color:#000
+    style EQUIP fill:#FFD54F,stroke:#FFA000,stroke-width:2px,color:#000
+    style WASTE fill:#FFD54F,stroke:#FFA000,stroke-width:2px,color:#000
+    style BATCH fill:#FFD54F,stroke:#FFA000,stroke-width:2px,color:#000
+    style LAMBDA fill:#FFC107,stroke:#FF8F00,stroke-width:2px,color:#000
     style DASHBOARD fill:#42A5F5,stroke:#1565C0,stroke-width:2px,color:#fff
     style CMMS fill:#AB47BC,stroke:#6A1B9A,stroke-width:2px,color:#fff

@@ -53,42 +53,48 @@
     |  bucket:factory |        |
     +--------+--------+        |
              |                 |
-             | Query (5-min    |
-             | rolling window) |
-             v                 |
-    +=====================================+
-    |       AGENTIC ANALYSIS LOOP         |
-    |         (Every 30 seconds)          |
-    |-------------------------------------|
-    |                                     |
-    |   InfluxDB  ---> EdgeMind Server    |
-    |      |               |              |
-    |      |    Bedrock    |              |
-    |      |      API      v              |
-    |      |        +-------------+       |
-    |      +------->| Claude      |       |
-    |               | Sonnet 4    |       |
-    |               | (Analysis)  |       |
-    |               +------+------+       |
-    |                      |              |
-    |    JSON Insights:    |              |
-    |    - Anomalies       |              |
-    |    - Trends          |              |
-    |    - Recommendations |              |
-    |                      v              |
-    +=====================|===============+
-                          |
-          +---------------+---------------+
-          |                               |
-          v                               v
+    +========|=================|========================+
+    |        |                 |                        |
+    |   DUAL AI ARCHITECTURE   |                        |
+    |   =====================  |                        |
+    |        |                 |                        |
+    |   +----+----+       +----+----+                   |
+    |   |         |       |         |                   |
+    |   v         |       v         |                   |
+    | +----------------+  +---------------------------+ |
+    | |  SIMPLE LOOP   |  |   AGENTCORE (On-Demand)   | |
+    | | (30-sec cycle) |  |   Multi-Agent System      | |
+    | |----------------|  |---------------------------| |
+    | | Query 5-min    |  | +---------------------+   | |
+    | | window         |  | |    Orchestrator     |   | |
+    | |      |         |  | |     (Supervisor)    |   | |
+    | |      v         |  | +----------+----------+   | |
+    | | +-----------+  |  |            |              | |
+    | | | Claude    |  |  |   +--+--+--+--+           | |
+    | | | Sonnet 4  |  |  |   |  |  |  |  |          | |
+    | | +-----------+  |  |   v  v  v  v  v          | |
+    | |      |         |  | +--+ +--+ +--+ +--+      | |
+    | | JSON Insights: |  | |OEE| |EQ| |WA| |BP|     | |
+    | | - Anomalies    |  | +--+ +--+ +--+ +--+      | |
+    | | - Trends       |  |         |                | |
+    | | - Recommendations |      Lambda Tools        | |
+    | +----------------+  +---------------------------+ |
+    |        |                      |                   |
+    +========|======================|===================+
+             |                      |
+          +--+----------------------+--+
+          |                            |
+          v                            v
     +-------------+               +---------------+
     |  Dashboard  |               |   MaintainX   |
     |  (Browser)  |               |     CMMS      |
     |-------------|               |---------------|
     | Real-time   |               | Work Orders   |
-    | WebSocket   |               | (High-        |
-    | Updates     |               |  Severity)    |
+    | WebSocket + |               | (High-        |
+    | Ask Agent   |               |  Severity)    |
     +-------------+               +---------------+
+
+    Legend: OEE=OEE Analyst, EQ=Equipment Health, WA=Waste Analyst, BP=Batch Process
 ```
 
 ### Simplified Flow Diagram
@@ -114,14 +120,22 @@
          |   Server      |         (Storage)
          +-------+-------+
                  |
-                 | Every 30s
-                 v
          +-------+-------+
-         |  AWS Bedrock  |
-         |  Claude AI    |
-         +-------+-------+
-                 |
-         +-------+-------+
+         |               |
+         v               v
+    +---------+    +-------------+
+    | Simple  |    |  AgentCore  |
+    | Loop    |    | Multi-Agent |
+    | (30s)   |    | (On-Demand) |
+    +---------+    +-------------+
+         |               |
+         | Claude        | Orchestrator
+         | Sonnet 4      |    +
+         |               | Specialists
+         v               v
+    +----+---------------+----+
+    |         Outputs         |
+    +-------------------------+
          |               |
          v               v
     +---------+    +-----------+
@@ -192,7 +206,16 @@ Fields:
 Timestamp: {nanosecond_precision}
 ```
 
-### 4. AI/ML Analysis - AWS Bedrock
+### 4. AI/ML Analysis - Dual Architecture
+
+EdgeMind uses two complementary AI systems:
+
+| System | Purpose | Trigger |
+|--------|---------|---------|
+| **Simple Claude Loop** | Continuous monitoring, real-time alerts | Automatic (30-second cycle) |
+| **AgentCore Multi-Agent** | Deep analysis, multi-step reasoning, user questions | On-demand (user queries) |
+
+#### 4a. Simple Claude Loop (Continuous Monitoring)
 
 | Component | Details |
 |-----------|---------|
@@ -202,7 +225,7 @@ Timestamp: {nanosecond_precision}
 | **Interval** | Every 30 seconds |
 | **Context Window** | 5-minute rolling window |
 
-**Agentic Workflow:**
+**Workflow:**
 1. Query InfluxDB for 5-minute trend data
 2. Format data as JSON with schema context
 3. Send to Claude with analysis prompt
@@ -233,6 +256,82 @@ Timestamp: {nanosecond_precision}
   ]
 }
 ```
+
+#### 4b. AgentCore Multi-Agent System (On-Demand Deep Analysis)
+
+| Component | Details |
+|-----------|---------|
+| **Service** | AWS Bedrock Agents |
+| **Mode** | Supervisor (multi-agent collaboration) |
+| **Region** | us-east-1 |
+| **Endpoint** | `POST /api/agent/ask` |
+
+**Agent Architecture:**
+```
+User Question
+      |
+      v
++------------------+
+|   Orchestrator   |  (edgemind-orchestrator)
+|   Supervisor     |  Routes to domain experts
++--------+---------+
+         |
+    +----+----+----+----+
+    |    |    |    |    |
+    v    v    v    v    v
++------+ +------+ +------+ +------+
+|  OEE | |Equip.| |Waste | |Batch |
+|Analyst| |Health| |Attr. | |Proc. |
++------+ +------+ +------+ +------+
+```
+
+**Specialist Agents:**
+
+| Agent | ID | Domain |
+|-------|-----|--------|
+| **OEE Analyst** | `edgemind-oee-analyst` | OEE analysis for Enterprise A/B (discrete manufacturing) |
+| **Equipment Health** | `edgemind-equipment-health` | Equipment state monitoring, fault patterns |
+| **Waste Attribution** | `edgemind-waste-analyst` | Defect analysis, quality waste tracking |
+| **Batch Process** | `edgemind-batch-process` | ISA-88 batch metrics for Enterprise C (pharma) |
+
+**Lambda Action Groups:**
+- Single Lambda function routes tool calls to backend API
+- Tools: `get_oee_breakdown`, `get_equipment_states`, `get_waste_by_line`, `get_batch_health`, `query_influxdb`
+
+**Data Flow:**
+```
+Dashboard "Ask Agent" Panel
+         |
+         v
+POST /api/agent/ask
+         |
+         v
+Backend (session management)
+         |
+         v
+Bedrock Agent Runtime
+         |
+         v
+Orchestrator Agent
+         |
+    (supervisor routing)
+         |
+         v
+Specialist Agent(s)
+         |
+    (tool calls via Lambda)
+         |
+         v
+Backend API → InfluxDB
+         |
+         v
+Response back through chain
+```
+
+**Key Difference - Enterprise C:**
+- Enterprise C (Pharmaceutical Manufacturing) uses ISA-88 batch process metrics
+- NOT OEE - batch processes measure yield, cycle time, batch quality
+- Batch Process Agent handles Enterprise C queries exclusively
 
 ### 5. Frontend - Live Dashboard
 
@@ -364,6 +463,18 @@ docker compose up -d
 | `docker-compose.yml` | Local development stack |
 | `docs/edgemind_architecture.mmd` | Mermaid diagram source |
 | `docs/edgemind_architecture_python.png` | Python-generated diagram |
+
+### AgentCore Infrastructure (CDK)
+
+| File | Purpose |
+|------|---------|
+| `infra/stacks/agentcore_stack.py` | CDK stack for Bedrock Agents |
+| `infra/agent_instructions/orchestrator.txt` | Orchestrator agent prompt |
+| `infra/agent_instructions/oee_analyst.txt` | OEE specialist prompt |
+| `infra/agent_instructions/equipment_health.txt` | Equipment specialist prompt |
+| `infra/agent_instructions/waste_analyst.txt` | Waste specialist prompt |
+| `infra/agent_instructions/batch_process.txt` | Batch process specialist prompt |
+| `infra/schemas/tools.yaml` | OpenAPI schema for Lambda action groups |
 
 ---
 

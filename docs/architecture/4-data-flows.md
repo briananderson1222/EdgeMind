@@ -35,7 +35,7 @@ sequenceDiagram
 - Writes every message to InfluxDB
 - Throttles WebSocket broadcast to every 10th message
 
-## 2. Agentic Loop (AI Analysis Cycle)
+## 2. Simple Loop (Continuous AI Analysis)
 
 Every 30 seconds, the server analyzes recent trends and broadcasts insights.
 
@@ -76,9 +76,9 @@ sequenceDiagram
 - Query window: 5 minutes
 - Aggregation: 1-minute buckets
 
-## 3. User Question Flow
+## 3. User Question Flow (Simple Claude)
 
-When a user asks Claude a question through the dashboard.
+When a user asks Claude a question through the dashboard via WebSocket.
 
 ```mermaid
 sequenceDiagram
@@ -106,6 +106,65 @@ sequenceDiagram
     AI->>WS: Send response to specific client
     WS->>DASH: JSON response
     DASH->>User: Display AI response
+```
+
+## 3b. AgentCore Question Flow (Multi-Agent)
+
+When a user asks a question via the "Ask Agent" panel, it routes through the multi-agent system.
+
+```mermaid
+sequenceDiagram
+    participant User as Dashboard User
+    participant DASH as Dashboard (app.js)
+    participant HTTP as HTTP Server
+    participant ORCH as Orchestrator Agent
+    participant SPEC as Specialist Agent
+    participant LAMBDA as Lambda Tools
+    participant API as Backend API
+
+    User->>DASH: Type question in Ask Agent panel
+    DASH->>HTTP: POST /api/agent/ask { question, session_id }
+
+    HTTP->>ORCH: InvokeAgent (Bedrock Agent Runtime)
+    Note over ORCH: Supervisor mode analyzes question
+
+    ORCH->>ORCH: Determine domain (OEE, Equipment, Waste, Batch)
+    ORCH->>SPEC: Route to appropriate specialist
+
+    Note over SPEC: Specialist processes question
+
+    SPEC->>LAMBDA: Tool call (e.g., get_oee_breakdown)
+    LAMBDA->>API: HTTP request to backend
+    API-->>LAMBDA: JSON data
+    LAMBDA-->>SPEC: Tool response
+
+    SPEC->>SPEC: Analyze data, formulate answer
+    SPEC-->>ORCH: Specialist response
+
+    ORCH-->>HTTP: Final response
+    HTTP-->>DASH: JSON response
+    DASH->>User: Display agent response
+```
+
+**Key Differences from Simple Claude:**
+- Uses supervisor orchestration
+- Multi-step reasoning across specialists
+- Session management for follow-up questions
+- Longer latency (~10-30s vs ~2-5s)
+
+**Routing Decision Tree:**
+```
+Question arrives at Orchestrator
+    |
+    +-- Contains "OEE" + Enterprise A or B? --> OEE Analyst
+    |
+    +-- Contains "equipment", "fault", "state"? --> Equipment Health
+    |
+    +-- Contains "quality", "defect", "waste"? --> Waste Analyst
+    |
+    +-- Mentions Enterprise C or "batch"? --> Batch Process
+    |
+    +-- General/unclear? --> Orchestrator handles directly
 ```
 
 ## 4. OEE Calculation Flow
@@ -243,18 +302,55 @@ sequenceDiagram
 |  | (subscribe) |    | (parse)     |    | (store)          |       |
 |  +-------------+    +-------------+    +--------+---------+       |
 |        |                                        |                 |
-|        | (1/10)                                 | (every 30s)     |
-|        v                                        v                 |
-|  +-------------+    +-------------+    +------------------+       |
-|  | WebSocket   |<---| AI Module   |<---| Query            |       |
-|  | Broadcast   |    | (analyze)   |    | (5-min window)   |       |
-|  +------+------+    +------+------+    +------------------+       |
-|         |                  |                                      |
-+---------+------------------+--------------------------------------+
-          |                  |
-          v                  v
-    +----------+      +-------------+
-    | Dashboard |      | Claude AI   |
-    | (browser) |      | (Bedrock)   |
-    +----------+      +-------------+
+|        | (1/10)                                 |                 |
+|        v                                        |                 |
+|  +-------------+                                |                 |
+|  | WebSocket   |                                |                 |
+|  | Broadcast   |                                |                 |
+|  +------+------+                                |                 |
+|         |                                       |                 |
++---------+---------------------------------------+-----------------+
+          |                                       |
+          v                                       |
+    +----------+                                  |
+    | Dashboard |                                 |
+    | (browser) |                                 |
+    +----+-----+                                  |
+         |                                        |
+         |     +==================================+============+
+         |     |          DUAL AI PATHS                        |
+         |     +===============================================+
+         |     |                              |                |
+         |     |   SIMPLE LOOP (30s)          | AGENTCORE      |
+         |     |   (Continuous)               | (On-Demand)    |
+         |     |                              |                |
+         |     |   InfluxDB                   | User Question  |
+         |     |      |                       |      |         |
+         |     |      v                       |      v         |
+         |     |   +--------+                 | +----------+   |
+         |     |   | Claude |                 | |Orchestrator  |
+         |     |   | Sonnet |                 | +-----+----+   |
+         |     |   +---+----+                 |       |        |
+         |     |       |                      |   +---+---+    |
+         |     |       v                      |   |       |    |
+         |     |   Insights                   | Specialists   |
+         |     |   Anomalies                  |   |       |    |
+         |     |       |                      |   v       v    |
+         |     |       |                      | Lambda Tools   |
+         |     +-------+----------------------+-------+--------+
+         |             |                              |
+         +<------------+                              |
+         |                                            |
+         +<-------------------------------------------+
 ```
+
+## Dual AI Architecture Summary
+
+| Aspect | Simple Loop | AgentCore |
+|--------|-------------|-----------|
+| **Trigger** | Timer (30s) | User question |
+| **Purpose** | Continuous monitoring | Deep analysis |
+| **Latency** | 2-5 seconds | 10-30 seconds |
+| **Model** | Claude Sonnet 4 | Bedrock Agents (multi-agent) |
+| **Scope** | All enterprises | Domain-specific specialists |
+| **Output** | JSON insights to WebSocket | Natural language response |

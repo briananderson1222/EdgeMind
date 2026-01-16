@@ -16,11 +16,12 @@ flowchart TB
             HTTP[HTTP Server<br/>Express.js<br/>Port 3000]
             WS[WebSocket Server<br/>ws library<br/>Port 8080]
             MQTT_H[MQTT Handler<br/>mqtt.js]
-            AGENT[Agentic Loop<br/>30-second cycle]
+            AGENT[Simple Loop<br/>30-second cycle]
+            AGENTAPI[Agent API<br/>POST /api/agent/ask]
         end
 
         subgraph frontend[Frontend]
-            DASH[Dashboard<br/>index.html + app.js<br/>Vanilla JS]
+            DASH[Dashboard<br/>index.html + app.js<br/>Vanilla JS + Ask Agent Panel]
         end
     end
 
@@ -29,6 +30,17 @@ flowchart TB
         INFLUX[(InfluxDB<br/>Time-series DB<br/>Port 8086)]
         CLAUDE[Claude AI<br/>AWS Bedrock]
         CMMS[MaintainX<br/>CMMS API]
+    end
+
+    subgraph agentcore[AgentCore - AWS Bedrock Agents]
+        ORCH[Orchestrator<br/>edgemind-orchestrator<br/>Supervisor Mode]
+        subgraph specialists[Specialist Agents]
+            OEE_A[OEE Analyst]
+            EQUIP_A[Equipment Health]
+            WASTE_A[Waste Analyst]
+            BATCH_A[Batch Process]
+        end
+        LAMBDA[Lambda<br/>Action Groups]
     end
 
     MQTT_B -->|Subscribe '#'| MQTT_H
@@ -44,6 +56,20 @@ flowchart TB
     HTTP -->|REST API| ENG
 
     AGENT -.->|Create work orders| CMMS
+
+    %% AgentCore Flow
+    DASH -->|User question| AGENTAPI
+    AGENTAPI -->|Invoke| ORCH
+    ORCH -->|Route| OEE_A
+    ORCH -->|Route| EQUIP_A
+    ORCH -->|Route| WASTE_A
+    ORCH -->|Route| BATCH_A
+    OEE_A --> LAMBDA
+    EQUIP_A --> LAMBDA
+    WASTE_A --> LAMBDA
+    BATCH_A --> LAMBDA
+    LAMBDA -->|Tool calls| HTTP
+    AGENTAPI -->|Response| DASH
 
     OP --> DASH
     ENG --> DASH
@@ -91,13 +117,41 @@ Time-series database optimized for factory telemetry:
 - **Retention:** Configurable (default: infinite)
 - **Aggregation:** 1-minute windows for AI analysis
 
-### Claude AI (Bedrock)
+### Claude AI (Bedrock) - Simple Loop
 
-AI service for trend analysis:
+AI service for continuous trend analysis:
 
 - **Input:** 5-minute rolling window of aggregated metrics
 - **Output:** Structured JSON with insights, anomalies, recommendations
-- **Memory:** Maintains session context for follow-up questions
+- **Trigger:** Automatic every 30 seconds
+
+### AgentCore - Multi-Agent System (Bedrock Agents)
+
+On-demand deep analysis via multi-agent collaboration:
+
+| Component | Agent ID | Purpose |
+|-----------|----------|---------|
+| **Orchestrator** | `edgemind-orchestrator` | Supervisor that routes questions to domain specialists |
+| **OEE Analyst** | `edgemind-oee-analyst` | OEE analysis for Enterprise A/B (discrete manufacturing) |
+| **Equipment Health** | `edgemind-equipment-health` | Equipment state monitoring, fault pattern analysis |
+| **Waste Analyst** | `edgemind-waste-analyst` | Defect attribution, quality waste tracking |
+| **Batch Process** | `edgemind-batch-process` | ISA-88 batch metrics for Enterprise C (pharma) |
+
+**Lambda Action Groups:**
+- Single Lambda function routes tool calls to backend REST API
+- Tools: `get_oee_breakdown`, `get_equipment_states`, `get_waste_by_line`, `get_batch_health`, `query_influxdb`
+
+**Key Design Decision:** Enterprise C (Pharmaceutical) uses batch process metrics (yield, cycle time, batch quality) instead of OEE. The Batch Process Agent handles all Enterprise C queries.
+
+### Dual AI Architecture Comparison
+
+| Aspect | Simple Loop | AgentCore |
+|--------|-------------|-----------|
+| **Trigger** | Automatic (30s) | On-demand (user query) |
+| **Purpose** | Continuous monitoring | Deep analysis |
+| **Model** | Claude Sonnet 4 | Bedrock Agents |
+| **Latency** | ~2-5 seconds | ~10-30 seconds |
+| **Use Case** | Real-time alerts | Complex questions |
 
 ## Port Mapping
 

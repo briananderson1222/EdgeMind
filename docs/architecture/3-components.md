@@ -1,6 +1,6 @@
 # C4 Level 3: Component Diagram
 
-This diagram shows the internal structure of the backend, focusing on the modular lib/ architecture.
+This diagram shows the internal structure of the backend, focusing on the modular lib/ architecture and the AgentCore multi-agent system.
 
 ## Component Overview
 
@@ -10,7 +10,8 @@ flowchart TB
         ROUTES[HTTP Routes]
         MQTT_SUB[MQTT Subscriber]
         WS_SERVER[WebSocket Server]
-        LOOP[Agentic Loop Timer]
+        LOOP[Simple Loop Timer]
+        AGENT_ROUTE[Agent API Route<br/>POST /api/agent/ask]
     end
 
     subgraph lib[lib/ - Backend Modules]
@@ -38,6 +39,21 @@ flowchart TB
         end
     end
 
+    subgraph agentcore[AgentCore - AWS Bedrock Agents]
+        subgraph orchestration[Orchestration]
+            ORCH[Orchestrator Agent<br/>edgemind-orchestrator<br/>Supervisor Mode]
+        end
+        subgraph specialists[Specialist Agents]
+            OEE_A[OEE Analyst<br/>edgemind-oee-analyst]
+            EQUIP_A[Equipment Health<br/>edgemind-equipment-health]
+            WASTE_A[Waste Analyst<br/>edgemind-waste-analyst]
+            BATCH_A[Batch Process<br/>edgemind-batch-process]
+        end
+        subgraph tools[Lambda Action Groups]
+            LAMBDA[Tool Router Lambda]
+        end
+    end
+
     ROUTES --> SCHEMA
     ROUTES --> OEE
     MQTT_SUB --> INFLUX_W
@@ -62,6 +78,20 @@ flowchart TB
 
     CMMS_I --> CMMS_M
     AI -.-> CMMS_I
+
+    %% AgentCore Flow
+    AGENT_ROUTE -->|Invoke| ORCH
+    ORCH -->|Route| OEE_A
+    ORCH -->|Route| EQUIP_A
+    ORCH -->|Route| WASTE_A
+    ORCH -->|Route| BATCH_A
+    OEE_A --> LAMBDA
+    EQUIP_A --> LAMBDA
+    WASTE_A --> LAMBDA
+    BATCH_A --> LAMBDA
+    LAMBDA -->|get_oee_breakdown| ROUTES
+    LAMBDA -->|get_equipment_states| ROUTES
+    LAMBDA -->|query_influxdb| INFLUX_C
 ```
 
 ## Module Dependency Graph
@@ -198,3 +228,80 @@ classDiagram
 | `GET /api/oee/v2` | oee/index.js | `calculateOEE()` |
 | `GET /api/oee/discovery` | oee/index.js | `discoverOEESchema()` |
 | `GET /api/factory/status` | oee/index.js | `getFactoryStatus()` |
+| `POST /api/agent/ask` | server.js | AgentCore proxy (invokes Bedrock Agent) |
+
+## AgentCore Component Details
+
+### Orchestrator Agent
+
+The orchestrator operates in **Supervisor Mode**, routing user questions to the appropriate specialist:
+
+```
+User: "Why is OEE dropping in Enterprise A?"
+  |
+  v
+Orchestrator: Analyzes question, identifies OEE + Enterprise A
+  |
+  v
+Routes to: OEE Analyst Agent
+  |
+  v
+OEE Analyst: Calls get_oee_breakdown tool, analyzes data
+  |
+  v
+Response: Returns through orchestrator to user
+```
+
+**Routing Logic:**
+- OEE questions for Enterprise A/B -> OEE Analyst
+- Equipment state/fault questions -> Equipment Health Agent
+- Quality/defect questions -> Waste Analyst Agent
+- Enterprise C (pharma) questions -> Batch Process Agent (NOT OEE)
+
+### Specialist Agents
+
+| Agent | Responsibilities | Tools Used |
+|-------|------------------|------------|
+| **OEE Analyst** | Analyze OEE trends, breakdowns, comparisons | `get_oee_breakdown`, `query_influxdb` |
+| **Equipment Health** | Equipment states, fault patterns, maintenance | `get_equipment_states`, `query_influxdb` |
+| **Waste Analyst** | Defect analysis, quality trends, waste attribution | `get_waste_by_line`, `query_influxdb` |
+| **Batch Process** | ISA-88 batch metrics, yield, cycle time | `get_batch_health`, `query_influxdb` |
+
+### Lambda Action Groups
+
+Single Lambda function routes tool calls to backend API:
+
+```python
+# Tool routing logic (simplified)
+def handler(event):
+    tool_name = event['actionGroup']
+    params = event['parameters']
+
+    if tool_name == 'get_oee_breakdown':
+        return call_backend('/api/oee/breakdown', params)
+    elif tool_name == 'get_equipment_states':
+        return call_backend('/api/equipment/states', params)
+    elif tool_name == 'query_influxdb':
+        return execute_flux_query(params['query'])
+    # ... etc
+```
+
+**Available Tools:**
+
+| Tool | Description | Backend Endpoint |
+|------|-------------|------------------|
+| `get_oee_breakdown` | 24h OEE by enterprise | `GET /api/oee/breakdown` |
+| `get_equipment_states` | Current equipment states | `GET /api/equipment/states` |
+| `get_waste_by_line` | Defect counts by production line | `GET /api/waste/by-line` |
+| `get_batch_health` | Batch process metrics (Enterprise C) | `GET /api/batch/health` |
+| `query_influxdb` | Direct Flux query for custom analysis | Direct InfluxDB |
+
+### CDK Infrastructure
+
+AgentCore is deployed via CDK:
+
+| File | Purpose |
+|------|---------|
+| `infra/stacks/agentcore_stack.py` | CDK stack defining all agents |
+| `infra/agent_instructions/*.txt` | Agent prompt instructions |
+| `infra/schemas/tools.yaml` | OpenAPI schema for Lambda tools |

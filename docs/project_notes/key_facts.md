@@ -31,6 +31,7 @@ Project configuration, constants, and frequently-needed reference information.
 | `edgemind-prod-database` | InfluxDB + ChromaDB on Fargate |
 | `edgemind-prod-backend` | Node.js backend + ALB |
 | `edgemind-prod-frontend` | S3 + CloudFront |
+| `edgemind-prod-agentcore` | Bedrock Agents multi-agent system |
 
 #### Deploy Commands
 ```bash
@@ -217,5 +218,67 @@ sudo docker run -d \
 ### Documentation
 - **CLAUDE.md**: Project instructions for AI assistants
 - **IMPLEMENTATION_CHECKLIST.md**: Refactoring progress tracker
+
+---
+
+## Documentation Wiki Structure
+
+**IMPORTANT**: Always check and update these docs when making architectural changes.
+
+### Location: `docs/`
+
+| File/Folder | Purpose | Update When |
+|-------------|---------|-------------|
+| `docs/architecture-diagram.md` | Main architecture overview with ASCII diagrams | Adding new components/services |
+| `docs/edgemind_architecture.mmd` | Mermaid diagram source (renders to PNG) | Adding new data flows |
+| `docs/architecture/` | C4 model documentation (context → components) | Architectural changes |
+| `docs/architecture/1-context.md` | System context (external actors) | New integrations |
+| `docs/architecture/2-containers.md` | Container diagram (runtime units) | New services/containers |
+| `docs/architecture/3-components.md` | Component breakdown (internal modules) | New modules in lib/ |
+| `docs/architecture/4-data-flows.md` | Data flow sequences | New API patterns |
+| `docs/project_notes/` | Project memory (bugs, decisions, facts) | Always |
+| `docs/deployment/` | Deployment guides | Infrastructure changes |
+
+### Architecture Diagram Files
+- `docs/edgemind_architecture.mmd` - Mermaid source
+- `docs/edgemind_architecture.png` - Generated PNG
+- `docs/edgemind_architecture.html` - Interactive HTML version
+- `docs/generate_architecture_diagram.py` - Python script to regenerate
+
+### When to Update Docs
+1. **New CDK stack** → Update `architecture-diagram.md`, `2-containers.md`
+2. **New API endpoint** → Update `3-components.md`, `4-data-flows.md`
+3. **New integration** → Update `1-context.md`, main diagram
+4. **Bug fix** → Log in `project_notes/bugs.md`
+5. **Architecture decision** → Log in `project_notes/decisions.md`
+
+---
+
+## AgentCore (Bedrock Agents Multi-Agent System)
+
+### Agents
+| Agent | ID Pattern | Purpose |
+|-------|------------|---------|
+| Orchestrator | `edgemind-orchestrator` | Supervisor - routes to specialists |
+| OEE Analyst | `edgemind-oee-analyst` | OEE analysis (Enterprise A/B only) |
+| Equipment Health | `edgemind-equipment-health` | Equipment state monitoring |
+| Waste Analyst | `edgemind-waste-analyst` | Defect/waste attribution |
+| Batch Process | `edgemind-batch-process` | ISA-88 batch metrics (Enterprise C only) |
+
+### Environment Variables
+- `AGENTCORE_AGENT_ID` - Orchestrator agent ID (from CDK output)
+- `AGENTCORE_ALIAS_ID` - Orchestrator alias ID (from CDK output)
+
+### API Endpoints
+- `POST /api/agent/ask` - Proxy questions to orchestrator
+- `GET /api/agent/health` - AgentCore availability check
+
+### CDK Files
+- `infra/stacks/agentcore_stack.py` - Main CDK stack
+- `infra/agent_instructions/*.txt` - Agent prompts (5 files)
+- `infra/schemas/tools.yaml` - OpenAPI tool definitions
+
+### Key Design Decision
+**Enterprise C uses batch processing (ISA-88), NOT OEE.** The Batch Process agent handles Enterprise C queries with batch terminology (yield, phase progress, batch completion) instead of OEE metrics.
 
 <!-- Add new facts above this line -->
