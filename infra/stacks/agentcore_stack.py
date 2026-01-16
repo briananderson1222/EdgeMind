@@ -36,10 +36,10 @@ class AgentCoreStack(Stack):
     and batch process monitoring.
     """
 
-    # Claude models - Use newest ACTIVE models (not LEGACY)
+    # Claude models - Use inference profiles (required for Bedrock Agents)
     # Orchestrator uses Sonnet 4.5 for reasoning, specialists use Haiku 4.5 for cost
-    ORCHESTRATOR_MODEL = "anthropic.claude-sonnet-4-5-20250929-v1:0"
-    SPECIALIST_MODEL = "anthropic.claude-haiku-4-5-20251001-v1:0"
+    ORCHESTRATOR_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    SPECIALIST_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
     def __init__(
         self,
