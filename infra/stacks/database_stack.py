@@ -164,14 +164,14 @@ class DatabaseStack(Stack):
             description="Service discovery namespace for EdgeMind services"
         )
 
-        # ECS Fargate Service
+        # ECS Fargate Service (using Spot for cost savings - ~70% cheaper)
         self.service = ecs.FargateService(
             self, "InfluxDBService",
             cluster=ecs_cluster,
             task_definition=task_definition,
             service_name=f"{project_name}-{environment}-influxdb",
             desired_count=1,
-            min_healthy_percent=100,  # Keep existing task running during deploy
+            min_healthy_percent=0,  # Allow service to scale down during Spot interruptions
             max_healthy_percent=200,  # Allow new task to start before stopping old
             security_groups=[influxdb_security_group],
             vpc_subnets=ec2.SubnetSelection(
@@ -188,6 +188,17 @@ class DatabaseStack(Stack):
                 rollback=True
             ),
             enable_execute_command=True,  # For debugging
+            capacity_provider_strategies=[
+                ecs.CapacityProviderStrategy(
+                    capacity_provider="FARGATE_SPOT",
+                    weight=1,  # Prefer Spot
+                ),
+                ecs.CapacityProviderStrategy(
+                    capacity_provider="FARGATE",
+                    weight=0,  # Fallback to on-demand if no Spot available
+                    base=0,
+                ),
+            ],
         )
 
         # InfluxDB Outputs
@@ -306,14 +317,14 @@ class DatabaseStack(Stack):
             )
         )
 
-        # ChromaDB ECS Fargate Service
+        # ChromaDB ECS Fargate Service (using Spot for cost savings - ~70% cheaper)
         self.chromadb_service = ecs.FargateService(
             self, "ChromaDBService",
             cluster=ecs_cluster,
             task_definition=chromadb_task_definition,
             service_name=f"{project_name}-{environment}-chromadb",
             desired_count=1,
-            min_healthy_percent=100,  # Keep existing task running during deploy
+            min_healthy_percent=0,  # Allow service to scale down during Spot interruptions
             max_healthy_percent=200,  # Allow new task to start before stopping old
             security_groups=[chromadb_security_group],
             vpc_subnets=ec2.SubnetSelection(
@@ -330,6 +341,17 @@ class DatabaseStack(Stack):
                 rollback=True
             ),
             enable_execute_command=True,
+            capacity_provider_strategies=[
+                ecs.CapacityProviderStrategy(
+                    capacity_provider="FARGATE_SPOT",
+                    weight=1,  # Prefer Spot
+                ),
+                ecs.CapacityProviderStrategy(
+                    capacity_provider="FARGATE",
+                    weight=0,  # Fallback to on-demand if no Spot available
+                    base=0,
+                ),
+            ],
         )
 
         # ChromaDB Outputs

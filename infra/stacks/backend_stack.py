@@ -201,7 +201,7 @@ class BackendStack(Stack):
             cluster=ecs_cluster,
             task_definition=task_definition,
             service_name=f"{project_name}-{environment}-backend",
-            desired_count=2,  # Run 2 instances for HA
+            desired_count=1,  # Single instance for cost efficiency (demo environment)
             min_healthy_percent=100,  # Keep existing tasks running during deploy
             max_healthy_percent=200,  # Allow new tasks to start before stopping old
             security_groups=[backend_security_group],

@@ -36,8 +36,9 @@ class AgentCoreStack(Stack):
     and batch process monitoring.
     """
 
-    # Claude 3.5 Sonnet model ID for all agents
-    FOUNDATION_MODEL = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    # Claude models - Orchestrator uses Sonnet for reasoning, specialists use Haiku for cost
+    ORCHESTRATOR_MODEL = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    SPECIALIST_MODEL = "anthropic.claude-3-5-haiku-20241022-v1:0"  # ~75% cheaper
 
     def __init__(
         self,
@@ -74,7 +75,7 @@ class AgentCoreStack(Stack):
             description="Execution role for EdgeMind Bedrock Agents",
         )
 
-        # Grant Bedrock model invocation permissions
+        # Grant Bedrock model invocation permissions (Sonnet for orchestrator, Haiku for specialists)
         self.agent_execution_role.add_to_policy(
             iam.PolicyStatement(
                 sid="BedrockInvokeModel",
@@ -84,7 +85,7 @@ class AgentCoreStack(Stack):
                     "bedrock:InvokeModelWithResponseStream",
                 ],
                 resources=[
-                    f"arn:aws:bedrock:{self.region}::foundation-model/{self.FOUNDATION_MODEL}",
+                    # Allow all Claude models (Sonnet + Haiku)
                     f"arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
                 ]
             )
@@ -160,12 +161,12 @@ class AgentCoreStack(Stack):
         # Sub-Agents (Specialists)
         # ========================================
 
-        # OEE Analyst Agent
+        # OEE Analyst Agent (uses Haiku for cost efficiency)
         self.oee_analyst_agent = bedrock.CfnAgent(
             self, "OEEAnalystAgent",
             agent_name=f"{project_name}-oee-analyst",
             agent_resource_role_arn=self.agent_execution_role.role_arn,
-            foundation_model=self.FOUNDATION_MODEL,
+            foundation_model=self.SPECIALIST_MODEL,
             instruction=oee_analyst_instructions,
             description="Specialist agent for OEE analysis - Availability, Performance, Quality",
             idle_session_ttl_in_seconds=600,
@@ -179,12 +180,12 @@ class AgentCoreStack(Stack):
             ],
         )
 
-        # Equipment Health Agent
+        # Equipment Health Agent (uses Haiku for cost efficiency)
         self.equipment_health_agent = bedrock.CfnAgent(
             self, "EquipmentHealthAgent",
             agent_name=f"{project_name}-equipment-health",
             agent_resource_role_arn=self.agent_execution_role.role_arn,
-            foundation_model=self.FOUNDATION_MODEL,
+            foundation_model=self.SPECIALIST_MODEL,
             instruction=equipment_health_instructions,
             description="Specialist agent for equipment state monitoring and downtime analysis",
             idle_session_ttl_in_seconds=600,
@@ -198,12 +199,12 @@ class AgentCoreStack(Stack):
             ],
         )
 
-        # Waste Attribution Agent
+        # Waste Attribution Agent (uses Haiku for cost efficiency)
         self.waste_analyst_agent = bedrock.CfnAgent(
             self, "WasteAnalystAgent",
             agent_name=f"{project_name}-waste-analyst",
             agent_resource_role_arn=self.agent_execution_role.role_arn,
-            foundation_model=self.FOUNDATION_MODEL,
+            foundation_model=self.SPECIALIST_MODEL,
             instruction=waste_analyst_instructions,
             description="Specialist agent for waste and defect analysis by production line",
             idle_session_ttl_in_seconds=600,
@@ -217,12 +218,12 @@ class AgentCoreStack(Stack):
             ],
         )
 
-        # Batch Process Agent (Enterprise C)
+        # Batch Process Agent - Enterprise C only (uses Haiku for cost efficiency)
         self.batch_process_agent = bedrock.CfnAgent(
             self, "BatchProcessAgent",
             agent_name=f"{project_name}-batch-process",
             agent_resource_role_arn=self.agent_execution_role.role_arn,
-            foundation_model=self.FOUNDATION_MODEL,
+            foundation_model=self.SPECIALIST_MODEL,
             instruction=batch_process_instructions,
             description="Specialist agent for ISA-88 batch processing (Enterprise C only)",
             idle_session_ttl_in_seconds=600,
@@ -278,12 +279,12 @@ class AgentCoreStack(Stack):
         # ========================================
 
         # The orchestrator uses SUPERVISOR collaboration mode to route to sub-agents
-        # Note: agent_collaboration is a string, agent_collaborators is a list
+        # Orchestrator uses Sonnet for better reasoning on routing decisions
         self.orchestrator_agent = bedrock.CfnAgent(
             self, "OrchestratorAgent",
             agent_name=f"{project_name}-orchestrator",
             agent_resource_role_arn=self.agent_execution_role.role_arn,
-            foundation_model=self.FOUNDATION_MODEL,
+            foundation_model=self.ORCHESTRATOR_MODEL,
             instruction=orchestrator_instructions,
             description="Supervisor agent that routes questions to specialist sub-agents",
             idle_session_ttl_in_seconds=1800,
