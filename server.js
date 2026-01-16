@@ -8,6 +8,7 @@ const { createCmmsProvider } = require('./lib/cmms-interface');
 const aiModule = require('./lib/ai');
 const vectorStore = require('./lib/vector');
 const { isSparkplugTopic, decodePayload, extractMetrics } = require('./lib/sparkplug/decoder');
+const { createAgentCoreClient } = require('./lib/agentcore');
 
 // Foundation modules
 const CONFIG = require('./lib/config');
@@ -58,6 +59,25 @@ if (CONFIG.cmms.enabled) {
   }
 } else {
   console.log('📋 CMMS integration disabled');
+}
+
+// Initialize AgentCore client
+let agentCoreClient = null;
+if (CONFIG.agentcore.agentId && CONFIG.agentcore.agentAliasId) {
+  try {
+    agentCoreClient = createAgentCoreClient({
+      region: CONFIG.bedrock.region,
+      agentId: CONFIG.agentcore.agentId,
+      agentAliasId: CONFIG.agentcore.agentAliasId
+    });
+    if (agentCoreClient) {
+      console.log('✅ AgentCore client initialized');
+    }
+  } catch (error) {
+    console.error(`❌ Failed to initialize AgentCore client: ${error.message}`);
+  }
+} else {
+  console.log('📋 AgentCore integration disabled (missing agentId or agentAliasId)');
 }
 
 // Serve static files (frontend HTML)
@@ -1308,6 +1328,259 @@ app.get('/api/schema/classifications', async (req, res) => {
     console.error('Schema classifications query error:', error);
     res.status(500).json({
       error: 'Failed to query schema classifications',
+      message: error.message
+    });
+  }
+});
+
+// =============================================================================
+// AGENTCORE INTEGRATION ENDPOINTS
+// =============================================================================
+
+/**
+ * POST /api/agent/ask - Proxy questions to AWS AgentCore orchestrator
+ * Body: { question: string, sessionId?: string }
+ * Response: { answer: string, sessionId: string }
+ */
+app.post('/api/agent/ask', express.json(), async (req, res) => {
+  try {
+    // Check if AgentCore is enabled
+    if (!agentCoreClient) {
+      return res.status(503).json({
+        error: 'AgentCore is not configured',
+        message: 'Set AGENTCORE_AGENT_ID and AGENTCORE_ALIAS_ID environment variables'
+      });
+    }
+
+    // Validate request body
+    const { question, sessionId } = req.body;
+
+    if (!question || typeof question !== 'string') {
+      return res.status(400).json({
+        error: 'Missing or invalid question parameter',
+        message: 'Question must be a non-empty string'
+      });
+    }
+
+    if (question.length > 1000) {
+      return res.status(400).json({
+        error: 'Question too long',
+        message: 'Question must be less than 1000 characters'
+      });
+    }
+
+    if (sessionId && (typeof sessionId !== 'string' || sessionId.length > 100)) {
+      return res.status(400).json({
+        error: 'Invalid sessionId parameter',
+        message: 'sessionId must be a string less than 100 characters'
+      });
+    }
+
+    console.log(`[AgentCore API] Received question: "${question.substring(0, 50)}..."`);
+
+    // Invoke the agent
+    const result = await agentCoreClient.ask(question, sessionId);
+
+    res.json({
+      answer: result.answer,
+      sessionId: result.sessionId,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('AgentCore ask endpoint error:', error);
+    res.status(500).json({
+      error: 'Failed to process question',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/agent/health - Check AgentCore connectivity
+ */
+app.get('/api/agent/health', async (req, res) => {
+  if (!agentCoreClient) {
+    return res.json({
+      enabled: false,
+      healthy: false,
+      message: 'AgentCore not configured'
+    });
+  }
+
+  try {
+    const health = await agentCoreClient.healthCheck();
+
+    res.json({
+      enabled: true,
+      ...health,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      enabled: true,
+      healthy: false,
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// =============================================================================
+// STUB ENDPOINTS FOR LAMBDA TOOL COMPATIBILITY
+// =============================================================================
+
+/**
+ * GET /api/waste/breakdown - Waste breakdown by enterprise (stub for Lambda tools)
+ * This reuses the existing /api/waste/by-line endpoint data
+ */
+app.get('/api/waste/breakdown', async (req, res) => {
+  try {
+    const fluxQuery = `
+      from(bucket: "factory")
+        |> range(start: -24h)
+        |> filter(fn: (r) => r._field == "value")
+        |> filter(fn: (r) =>
+          r._measurement == "OEE_Waste" or
+          r._measurement == "Production_DefectCHK" or
+          r._measurement == "Production_DefectDIM" or
+          r._measurement == "Production_DefectSED" or
+          r._measurement == "Production_RejectCount" or
+          r._measurement == "count_defect" or
+          r._measurement == "input_countdefect" or
+          r._measurement == "workorder_quantitydefect"
+        )
+        |> filter(fn: (r) => r._value >= 0)
+        |> group(columns: ["enterprise"])
+        |> sum()
+    `;
+
+    const enterpriseData = new Map();
+
+    await new Promise((resolve) => {
+      queryApi.queryRows(fluxQuery, {
+        next(row, tableMeta) {
+          const o = tableMeta.toObject(row);
+          if (o._value !== undefined && o.enterprise) {
+            if (!enterpriseData.has(o.enterprise)) {
+              enterpriseData.set(o.enterprise, { enterprise: o.enterprise, total: 0 });
+            }
+            enterpriseData.get(o.enterprise).total += o._value;
+          }
+        },
+        error(error) {
+          console.error('Waste breakdown query error:', error);
+          resolve();
+        },
+        complete() {
+          resolve();
+        }
+      });
+    });
+
+    const breakdown = Array.from(enterpriseData.values())
+      .map(item => ({
+        ...item,
+        total: parseFloat(item.total.toFixed(2))
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    res.json({
+      breakdown,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Waste breakdown endpoint error:', error);
+    res.status(500).json({
+      error: 'Failed to query waste breakdown',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/batch/health - Batch process health for Enterprise C (stub)
+ * Returns mock data until ISA-88 batch tracking is implemented
+ */
+app.get('/api/batch/health', async (req, res) => {
+  try {
+    // TODO: Implement ISA-88 batch tracking for Enterprise C
+    // For now, return placeholder data
+    res.json({
+      enterprise: 'Enterprise C',
+      batches: [],
+      message: 'Enterprise C uses ISA-88 batch control (not yet fully implemented)',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Batch health endpoint error:', error);
+    res.status(500).json({
+      error: 'Failed to query batch health',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/influx/query - Direct InfluxDB query endpoint (stub for Lambda tools)
+ * SECURITY: This is a privileged endpoint - should be restricted in production
+ */
+app.post('/api/influx/query', express.json(), async (req, res) => {
+  try {
+    const { query } = req.body;
+
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({
+        error: 'Missing or invalid query parameter',
+        message: 'Query must be a non-empty Flux query string'
+      });
+    }
+
+    if (query.length > 5000) {
+      return res.status(400).json({
+        error: 'Query too long',
+        message: 'Query must be less than 5000 characters'
+      });
+    }
+
+    // Basic security check - reject destructive operations
+    const lowerQuery = query.toLowerCase();
+    if (lowerQuery.includes('delete') || lowerQuery.includes('drop')) {
+      return res.status(403).json({
+        error: 'Forbidden query',
+        message: 'DELETE and DROP operations are not allowed'
+      });
+    }
+
+    console.log('[InfluxDB Query API] Executing query');
+
+    const results = [];
+    await new Promise((resolve) => {
+      queryApi.queryRows(query, {
+        next(row, tableMeta) {
+          results.push(tableMeta.toObject(row));
+        },
+        error(error) {
+          console.error('InfluxDB query error:', error);
+          resolve();
+        },
+        complete() {
+          resolve();
+        }
+      });
+    });
+
+    res.json({
+      results,
+      count: results.length,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('InfluxDB query endpoint error:', error);
+    res.status(500).json({
+      error: 'Failed to execute query',
       message: error.message
     });
   }
