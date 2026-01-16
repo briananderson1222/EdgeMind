@@ -177,8 +177,8 @@ class BackendStack(Stack):
                 "CHROMA_HOST": "chromadb.edgemind.local",
                 "CHROMA_PORT": "8000",
                 # AgentCore (Bedrock Agents) configuration
-                "AGENTCORE_AGENT_ID": "ZZLBK0STEG",
-                "AGENTCORE_ALIAS_ID": "FBT78VJIWI",
+                "AGENTCORE_AGENT_ID": "LZD8KBAIV4",
+                "AGENTCORE_ALIAS_ID": "UB6BTG6GIH",
             },
             secrets={
                 # MQTT credentials from Secrets Manager
