@@ -257,17 +257,26 @@ sudo docker run -d \
 ## AgentCore (Bedrock Agents Multi-Agent System)
 
 ### Agents
-| Agent | ID Pattern | Purpose |
-|-------|------------|---------|
-| Orchestrator | `edgemind-orchestrator` | Supervisor - routes to specialists |
-| OEE Analyst | `edgemind-oee-analyst` | OEE analysis (Enterprise A/B only) |
-| Equipment Health | `edgemind-equipment-health` | Equipment state monitoring |
-| Waste Analyst | `edgemind-waste-analyst` | Defect/waste attribution |
-| Batch Process | `edgemind-batch-process` | ISA-88 batch metrics (Enterprise C only) |
+| Agent | ID Pattern | Model | Purpose |
+|-------|------------|-------|---------|
+| Orchestrator | `edgemind-orchestrator` | **Sonnet** | Supervisor - routes to specialists |
+| OEE Analyst | `edgemind-oee-analyst` | Haiku | OEE analysis (Enterprise A/B only) |
+| Equipment Health | `edgemind-equipment-health` | Haiku | Equipment state monitoring |
+| Waste Analyst | `edgemind-waste-analyst` | Haiku | Defect/waste attribution |
+| Batch Process | `edgemind-batch-process` | Haiku | ISA-88 batch metrics (Enterprise C only) |
+
+**Model Strategy:** Orchestrator uses Sonnet for routing reasoning. Specialists use Haiku for cost efficiency (~75% cheaper).
+
+### Deployed Agent IDs (us-east-1)
+- Orchestrator: `HRR41EHLP7` / Alias: `YTCP5LUQFT`
+- OEE Analyst: `8ERJAT0AWU`
+- Equipment Health: `4WDR8HDNQJ`
+- Waste Analyst: `D6BAMMCTET`
+- Batch Process: `2GEE5FJYKD`
 
 ### Environment Variables
-- `AGENTCORE_AGENT_ID` - Orchestrator agent ID (from CDK output)
-- `AGENTCORE_ALIAS_ID` - Orchestrator alias ID (from CDK output)
+- `AGENTCORE_AGENT_ID` - Orchestrator agent ID (`HRR41EHLP7`)
+- `AGENTCORE_ALIAS_ID` - Orchestrator alias ID (`YTCP5LUQFT`)
 
 ### API Endpoints
 - `POST /api/agent/ask` - Proxy questions to orchestrator
@@ -280,5 +289,37 @@ sudo docker run -d \
 
 ### Key Design Decision
 **Enterprise C uses batch processing (ISA-88), NOT OEE.** The Batch Process agent handles Enterprise C queries with batch terminology (yield, phase progress, batch completion) instead of OEE metrics.
+
+---
+
+## Cost Optimization (ADR-009)
+
+### Monthly Cost Breakdown (~$127/month)
+
+| Component | Configuration | Cost |
+|-----------|---------------|------|
+| **Fargate Backend** | 0.5 vCPU, 1GB, 1 instance | $21.90 |
+| **Fargate InfluxDB** | 0.5 vCPU, 1GB, Spot | ~$6.60 |
+| **Fargate ChromaDB** | 0.25 vCPU, 512MB, Spot | ~$2.70 |
+| **Bedrock AI** | Sonnet (orchestrator) + Haiku (specialists) | ~$35 |
+| **ALB** | Application Load Balancer | $16.20 |
+| **CloudFront** | ~50GB transfer | $4.25 |
+| **S3 + EFS + Logs** | Storage | ~$5.50 |
+| **TOTAL** | | **~$127/mo** |
+
+### Cost Optimization Applied
+1. **Specialists on Haiku** (~75% AI cost reduction)
+2. **Fargate Spot for databases** (~70% compute reduction)
+3. **Single backend instance** (50% backend reduction)
+4. **No NAT Gateway** (using public subnets)
+
+### Cost Monitoring
+```bash
+# Check Bedrock usage
+aws bedrock get-model-invocation-logging-configuration --region us-east-1
+
+# Check Fargate Spot savings
+aws ecs describe-services --cluster edgemind-prod-cluster --services edgemind-prod-influxdb
+```
 
 <!-- Add new facts above this line -->

@@ -129,13 +129,15 @@ AI service for continuous trend analysis:
 
 On-demand deep analysis via multi-agent collaboration:
 
-| Component | Agent ID | Purpose |
-|-----------|----------|---------|
-| **Orchestrator** | `edgemind-orchestrator` | Supervisor that routes questions to domain specialists |
-| **OEE Analyst** | `edgemind-oee-analyst` | OEE analysis for Enterprise A/B (discrete manufacturing) |
-| **Equipment Health** | `edgemind-equipment-health` | Equipment state monitoring, fault pattern analysis |
-| **Waste Analyst** | `edgemind-waste-analyst` | Defect attribution, quality waste tracking |
-| **Batch Process** | `edgemind-batch-process` | ISA-88 batch metrics for Enterprise C (pharma) |
+| Component | Agent ID | Model | Purpose |
+|-----------|----------|-------|---------|
+| **Orchestrator** | `edgemind-orchestrator` | Sonnet | Supervisor that routes questions to domain specialists |
+| **OEE Analyst** | `edgemind-oee-analyst` | Haiku | OEE analysis for Enterprise A/B (discrete manufacturing) |
+| **Equipment Health** | `edgemind-equipment-health` | Haiku | Equipment state monitoring, fault pattern analysis |
+| **Waste Analyst** | `edgemind-waste-analyst` | Haiku | Defect attribution, quality waste tracking |
+| **Batch Process** | `edgemind-batch-process` | Haiku | ISA-88 batch metrics for Enterprise C (pharma) |
+
+**Cost Optimization:** Orchestrator uses Sonnet for routing reasoning. Specialists use Haiku (~75% cheaper).
 
 **Lambda Action Groups:**
 - Single Lambda function routes tool calls to backend REST API

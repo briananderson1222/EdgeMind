@@ -312,4 +312,67 @@ If blocked, can pivot to enhanced-single-agent-loop in 1-2 days.
 
 ---
 
+### ADR-009: Cost Optimization - Haiku Specialists + Fargate Spot (2026-01-16)
+
+**Context:**
+- Initial AgentCore deployment used Claude Sonnet for all 5 agents
+- Fargate services (Backend, InfluxDB, ChromaDB) used On-Demand pricing
+- Backend ran 2 instances for HA (overkill for demo environment)
+- Estimated monthly cost: ~$250/month
+
+**Decision:**
+- **AgentCore Model Selection:**
+  - Orchestrator: Keep **Claude Sonnet** (needs reasoning for routing decisions)
+  - 4 Specialists: Switch to **Claude Haiku** (~75% cheaper, sufficient for domain-specific tasks)
+- **Fargate Capacity Providers:**
+  - InfluxDB + ChromaDB: Use **Fargate Spot** (70% cheaper, tolerable brief interruptions)
+  - Backend: Keep On-Demand (user-facing, needs stability)
+- **Instance Count:**
+  - Backend: Reduce from 2 to 1 (demo environment, HA unnecessary)
+
+**Alternatives Considered:**
+- All agents on Haiku → Rejected: Orchestrator needs better reasoning for routing
+- All agents on Sonnet → Rejected: Specialists don't need reasoning, just domain knowledge
+- Fargate Spot for Backend → Rejected: User-facing service, interruptions unacceptable
+- NAT Gateway elimination → Already optimized: using public subnets, no NAT Gateway
+
+**Cost Analysis:**
+
+| Component | Before | After | Savings |
+|-----------|--------|-------|---------|
+| Bedrock AI (50 q/day) | $115/mo | ~$35/mo | 70% |
+| Fargate Backend | $43.80/mo | $21.90/mo | 50% |
+| Fargate InfluxDB | $21.90/mo | ~$6.60/mo | 70% |
+| Fargate ChromaDB | $8.95/mo | ~$2.70/mo | 70% |
+| Other (ALB, S3, etc.) | $60/mo | $60/mo | 0% |
+| **TOTAL** | **~$250/mo** | **~$127/mo** | **~49%** |
+
+**Consequences:**
+- ✅ ~49% cost reduction (~$123/month saved)
+- ✅ Specialists still effective for domain-specific tasks
+- ✅ Spot interruptions tolerable for databases (EFS persistence)
+- ⚠️ Haiku may produce less nuanced responses than Sonnet
+- ⚠️ Spot interruptions cause brief database unavailability (~2 min recovery)
+- ⚠️ Single backend instance means no HA during deployments
+
+**Implementation:**
+```python
+# agentcore_stack.py
+ORCHESTRATOR_MODEL = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+SPECIALIST_MODEL = "anthropic.claude-3-5-haiku-20241022-v1:0"
+
+# database_stack.py - Fargate Spot
+capacity_provider_strategies=[
+    ecs.CapacityProviderStrategy(capacity_provider="FARGATE_SPOT", weight=1),
+    ecs.CapacityProviderStrategy(capacity_provider="FARGATE", weight=0, base=0),
+]
+```
+
+**Revisit:**
+- If Haiku responses are insufficient, upgrade specific specialists to Sonnet
+- If Spot interruptions are problematic, switch databases back to On-Demand
+- For production (non-demo), consider 2+ backend instances
+
+---
+
 <!-- Add new decisions above this line -->
