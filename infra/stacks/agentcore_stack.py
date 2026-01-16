@@ -37,9 +37,13 @@ class AgentCoreStack(Stack):
     """
 
     # Claude models - Use inference profiles (required for Bedrock Agents)
-    # Orchestrator uses Sonnet 4.5 for reasoning, specialists use Haiku 4.5 for cost
-    ORCHESTRATOR_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-    SPECIALIST_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # NOTE: Claude 4 models require enablement in Bedrock console (Model access).
+    # Using Claude 3.5 Sonnet v1 and Claude 3 Haiku until Claude 4 is enabled.
+    # To upgrade: Enable Claude Sonnet 4.5 and Haiku 4.5 in Bedrock console, then update these:
+    #   ORCHESTRATOR_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    #   SPECIALIST_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    ORCHESTRATOR_MODEL = "us.anthropic.claude-3-5-sonnet-20240620-v1:0"
+    SPECIALIST_MODEL = "us.anthropic.claude-3-haiku-20240307-v1:0"
 
     def __init__(
         self,
@@ -77,6 +81,7 @@ class AgentCoreStack(Stack):
         )
 
         # Grant Bedrock model invocation permissions (Sonnet 4.5 for orchestrator, Haiku 4.5 for specialists)
+        # Using broad permissions for model invocation - inference profiles require wildcard access
         self.agent_execution_role.add_to_policy(
             iam.PolicyStatement(
                 sid="BedrockInvokeModel",
@@ -85,10 +90,7 @@ class AgentCoreStack(Stack):
                     "bedrock:InvokeModel",
                     "bedrock:InvokeModelWithResponseStream",
                 ],
-                resources=[
-                    # All Anthropic Claude foundation models
-                    "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
-                ]
+                resources=["*"]  # Bedrock Agents require broad access for model invocation
             )
         )
 
@@ -445,41 +447,50 @@ import json
 import os
 import urllib.request
 import urllib.error
+import urllib.parse
 
 BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "http://localhost:3000")
 
 def handler(event, context):
-    """Handle tool calls from Bedrock Agents.
+    """Handle tool calls from Bedrock Agents (OpenAPI schema format).
 
     Routes tool calls to the appropriate backend API endpoint.
     """
     print(f"Received event: {json.dumps(event)}")
 
-    # Extract action group and function name from the event
+    # Extract fields from the OpenAPI schema format event
     action_group = event.get("actionGroup", "")
-    function_name = event.get("function", "")
-    parameters = event.get("parameters", [])
+    api_path = event.get("apiPath", "")
+    http_method = event.get("httpMethod", "POST")
+    request_body = event.get("requestBody", {})
 
-    # Convert parameters list to dict
+    # Extract parameters from requestBody (OpenAPI format)
     params = {}
-    for param in parameters:
-        params[param.get("name")] = param.get("value")
+    try:
+        properties = request_body.get("content", {}).get("application/json", {}).get("properties", [])
+        for prop in properties:
+            params[prop.get("name")] = prop.get("value")
+    except Exception as e:
+        print(f"Error parsing parameters: {e}")
+
+    # Derive function name from apiPath (e.g., "/get_oee_breakdown" -> "get_oee_breakdown")
+    function_name = api_path.lstrip("/") if api_path else ""
 
     print(f"Action: {action_group}/{function_name}, Params: {params}")
 
     try:
         result = route_tool_call(function_name, params)
 
+        # Return response in OpenAPI format (must include apiPath and httpMethod)
         return {
             "messageVersion": "1.0",
             "response": {
                 "actionGroup": action_group,
-                "function": function_name,
-                "functionResponse": {
-                    "responseBody": {
-                        "TEXT": {
-                            "body": json.dumps(result)
-                        }
+                "apiPath": api_path,
+                "httpMethod": http_method,
+                "responseBody": {
+                    "application/json": {
+                        "body": json.dumps(result)
                     }
                 }
             }
@@ -490,12 +501,11 @@ def handler(event, context):
             "messageVersion": "1.0",
             "response": {
                 "actionGroup": action_group,
-                "function": function_name,
-                "functionResponse": {
-                    "responseBody": {
-                        "TEXT": {
-                            "body": json.dumps({"error": str(e)})
-                        }
+                "apiPath": api_path,
+                "httpMethod": http_method,
+                "responseBody": {
+                    "application/json": {
+                        "body": json.dumps({"error": str(e)})
                     }
                 }
             }
@@ -504,16 +514,23 @@ def handler(event, context):
 def route_tool_call(function_name: str, params: dict) -> dict:
     """Route tool calls to backend API endpoints."""
 
+    # Helper to clean and URL-encode parameter values
+    def encode_param(value):
+        # Remove extra quotes if present (agent sometimes adds them)
+        if value.startswith('"') and value.endswith('"'):
+            value = value[1:-1]
+        return urllib.parse.quote(value, safe='')
+
     if function_name == "get_oee_breakdown":
-        enterprise = params.get("enterprise", "ALL")
+        enterprise = encode_param(params.get("enterprise", "ALL"))
         return call_backend_api(f"/api/oee/v2?enterprise={enterprise}")
 
     elif function_name == "get_equipment_states":
-        enterprise = params.get("enterprise", "ALL")
+        enterprise = encode_param(params.get("enterprise", "ALL"))
         return call_backend_api(f"/api/factory/status?enterprise={enterprise}")
 
     elif function_name == "get_waste_by_line":
-        enterprise = params.get("enterprise", "ALL")
+        enterprise = encode_param(params.get("enterprise", "ALL"))
         # Note: This endpoint may need to be implemented in the backend
         return call_backend_api(f"/api/waste/breakdown?enterprise={enterprise}")
 
