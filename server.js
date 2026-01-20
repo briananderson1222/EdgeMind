@@ -808,6 +808,7 @@ app.get('/api/oee/lines', async (req, res) => {
       ? `|> filter(fn: (r) => r.enterprise == "${sanitizeInfluxIdentifier(enterprise)}")`
       : '';
 
+    // Single query with pivot to get OEE + A/P/Q in one shot
     const fluxQuery = `
       from(bucket: "${CONFIG.influxdb.bucket}")
         |> range(start: -24h)
@@ -816,13 +817,17 @@ app.get('/api/oee/lines', async (req, res) => {
           r._measurement == "OEE_Performance" or
           r._measurement == "OEE_Availability" or
           r._measurement == "OEE_Quality" or
-          r._measurement == "metric_oee"
+          r._measurement == "metric_oee" or
+          r._measurement == "metric_availability" or
+          r._measurement == "metric_performance" or
+          r._measurement == "metric_quality"
         )
-        |> filter(fn: (r) => r._value > 0.1 and r._value <= 150)
+        |> filter(fn: (r) => r._value > 0 and r._value <= 150)
         ${enterpriseFilter}
-        |> group(columns: ["enterprise", "site", "area"])
+        |> group(columns: ["enterprise", "site", "area", "_measurement"])
         |> mean()
-        |> yield(name: "mean_oee_by_line")
+        |> group(columns: ["enterprise", "site", "area"])
+        |> pivot(rowKey: ["enterprise", "site", "area"], columnKey: ["_measurement"], valueColumn: "_value")
     `;
 
     const lines = [];
@@ -831,24 +836,39 @@ app.get('/api/oee/lines', async (req, res) => {
       queryApi.queryRows(fluxQuery, {
         next(row, tableMeta) {
           const o = tableMeta.toObject(row);
-          if (o._value !== undefined && o.enterprise && o.site) {
-            let oee = o._value;
-            // Normalize to percentage
-            if (oee > 0 && oee <= 1.5) {
-              oee = oee * 100;
+          if (o.enterprise && o.site) {
+            // Normalize value to percentage (handle both decimal 0-1 and percentage 0-100)
+            const normalize = (val) => {
+              if (val === undefined || val === null) return null;
+              if (val > 0 && val <= 1.5) val = val * 100;
+              return parseFloat(Math.min(100, Math.max(0, val)).toFixed(1));
+            };
+
+            // Get values from either naming convention
+            const availability = normalize(o.OEE_Availability ?? o.metric_availability);
+            const performance = normalize(o.OEE_Performance ?? o.metric_performance);
+            const quality = normalize(o.OEE_Quality ?? o.metric_quality);
+            let oee = normalize(o.metric_oee);
+
+            // Calculate OEE from components if not directly available
+            if (oee === null && availability !== null && performance !== null && quality !== null) {
+              oee = parseFloat(((availability / 100) * (performance / 100) * (quality / 100) * 100).toFixed(1));
             }
-            oee = Math.min(100, Math.max(0, oee));
+
+            // Skip lines with no OEE data
+            if (oee === null && availability === null && performance === null && quality === null) {
+              return;
+            }
 
             lines.push({
               enterprise: o.enterprise,
               site: o.site,
               line: o.area || 'unknown',
-              oee: parseFloat(oee.toFixed(1)),
-              // Infer component values (would need separate queries for actual values)
-              availability: null,
-              performance: null,
-              quality: null,
-              tier: 1 // Assume tier 1 since we're using direct OEE measurements
+              oee,
+              availability,
+              performance,
+              quality,
+              tier: o.metric_oee ? 1 : (availability && performance && quality ? 2 : 4)
             });
           }
         },

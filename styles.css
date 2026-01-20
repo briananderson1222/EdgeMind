@@ -1183,10 +1183,9 @@ footer {
 
 .line-oee-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 10px;
-    flex: 1;
-    max-height: 350px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    max-height: 400px;
     overflow-y: auto;
 }
 
@@ -1204,15 +1203,13 @@ footer {
 }
 
 .line-card {
-    padding: 15px;
+    padding: 12px;
     background: rgba(0, 0, 0, 0.3);
     border: 2px solid;
     border-radius: 6px;
     transition: all 0.3s ease;
-    min-height: 100px;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
 }
 
 .line-card.healthy {
@@ -1235,6 +1232,34 @@ footer {
     box-shadow: 0 4px 12px rgba(0, 255, 255, 0.3);
 }
 
+.line-header {
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+    padding-bottom: 6px;
+}
+
+.line-enterprise {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.line-location {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .line-name {
     font-family: 'Rajdhani', sans-serif;
     font-size: 0.9rem;
@@ -1255,7 +1280,8 @@ footer {
     font-family: 'Orbitron', sans-serif;
     font-size: 1.8rem;
     font-weight: 900;
-    margin-bottom: 5px;
+    text-align: center;
+    padding: 8px 0;
 }
 
 .line-card.healthy .line-oee-value {
@@ -1298,24 +1324,29 @@ footer {
 
 .line-breakdown {
     display: flex;
-    justify-content: space-between;
-    margin-top: 10px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.75rem;
-    color: var(--text-primary);
+    justify-content: space-around;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .line-breakdown-item {
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: 2px;
 }
 
 .line-breakdown-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-dim);
     text-transform: uppercase;
 }
 
 .line-breakdown-value {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
     color: var(--text-primary);
     font-weight: 700;
 }
@@ -2298,7 +2329,7 @@ footer {
         font-size: 0.85rem;
     }
 }
-    
+
 /* Chat Widget */
 /* .chat-widget {
     position: fixed;
