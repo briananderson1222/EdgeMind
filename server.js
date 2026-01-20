@@ -471,6 +471,41 @@ app.get('/api/trends', async (req, res) => {
   res.json(trends);
 });
 
+// Chat endpoint - proxies to AgentCore agent
+const AGENTCORE_URL = process.env.AGENTCORE_URL || 'http://localhost:8080';
+app.post('/api/chat', express.json(), async (req, res) => {
+  const { prompt, sessionId } = req.body;
+  if (!prompt) return res.status(400).json({ error: 'prompt required' });
+
+  try {
+    const response = await fetch(`${AGENTCORE_URL}/invocations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, session_id: sessionId || 'default' })
+    });
+
+    if (!response.ok) throw new Error(`Agent error: ${response.status}`);
+
+    // Stream the response
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(decoder.decode(value, { stream: true }));
+    }
+    res.end();
+  } catch (err) {
+    console.error('Chat error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // API endpoint to get threshold settings
 app.get('/api/settings', (req, res) => {
   res.json(factoryState.thresholdSettings);

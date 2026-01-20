@@ -19,6 +19,9 @@ const SLEEPING_AGENT_MESSAGES = [
     "The AI took a personal day. Machines don't judge."
 ];
 
+// Format percentage value, returns '--' for null/undefined
+const fmtPct = (v) => (v !== null && v !== undefined) ? `${Number(v).toFixed(1)}%` : '--';
+
 // Dynamic WebSocket URL - matches page protocol (ws:// for http, wss:// for https)
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL = window.location.hostname === 'localhost'
@@ -878,37 +881,18 @@ function renderLineOEEGrid(lines) {
         if (oee >= 85) statusClass = 'healthy';
         else if (oee >= 70) statusClass = 'warning';
 
-        // Construct line name from available fields
-        // API returns: enterprise, site, line (area), oee
-        const lineName = line.name || `${line.site} - ${line.line || 'Line'}`;
-
-        // Format breakdown - always show A/P/Q labels with "--" when unavailable
-        const fmtVal = (v) => (v !== null && v !== undefined) ? `${v}%` : '--';
-        const breakdownHtml = `
-            <div class="line-breakdown">
-                <div class="line-breakdown-item">
-                    <span class="line-breakdown-label">A</span>
-                    <span class="line-breakdown-value">${fmtVal(line.availability)}</span>
-                </div>
-                <div class="line-breakdown-item">
-                    <span class="line-breakdown-label">P</span>
-                    <span class="line-breakdown-value">${fmtVal(line.performance)}</span>
-                </div>
-                <div class="line-breakdown-item">
-                    <span class="line-breakdown-label">Q</span>
-                    <span class="line-breakdown-value">${fmtVal(line.quality)}</span>
-                </div>
-            </div>
-        `;
-
         return `
             <div class="line-card ${statusClass}" data-enterprise="${line.enterprise || ''}">
-                <div class="line-name" title="${lineName}">${lineName}</div>
-                <div class="line-oee-value">${oee.toFixed(1)}%</div>
-                <div class="line-oee-bar">
-                    <div class="line-oee-bar-fill" style="width: ${oee}%"></div>
+                <div class="line-header">
+                    <div class="line-enterprise">${line.enterprise || 'Unknown'}</div>
+                    <div class="line-location">${[line.site, line.line !== 'unknown' ? line.line : null].filter(Boolean).join(' / ') || 'Unknown Location'}</div>
                 </div>
-                ${breakdownHtml}
+                <div class="line-oee-value">${fmtPct(oee)}</div>
+                <div class="line-breakdown">
+                    <div class="line-breakdown-item"><span class="line-breakdown-label">A</span><span class="line-breakdown-value">${fmtPct(line.availability)}</span></div>
+                    <div class="line-breakdown-item"><span class="line-breakdown-label">P</span><span class="line-breakdown-value">${fmtPct(line.performance)}</span></div>
+                    <div class="line-breakdown-item"><span class="line-breakdown-label">Q</span><span class="line-breakdown-value">${fmtPct(line.quality)}</span></div>
+                </div>
             </div>
         `;
     }).join('');
@@ -1310,9 +1294,8 @@ async function fetchOEE() {
         const oeeStatus = document.getElementById('oee-status');
 
         if (data.average !== null) {
-            oeeScore.textContent = data.average.toFixed(1) + '%';
-            const displayName = enterprise === 'ALL' ? 'All Enterprises' : enterprise;
-            oeeStatus.textContent = `${data.period} avg • ${displayName}`;
+            oeeScore.textContent = fmtPct(data.average);
+            oeeStatus.textContent = `${data.period} avg • ${enterprise === 'ALL' ? 'All Enterprises' : enterprise}`;
             oeeStatus.className = 'metric-change positive';
 
             // Update scorecard gauge
@@ -1338,7 +1321,7 @@ function updateOEEGauge(oeePercent) {
     if (!gaugeValue || !gaugeFill) return;
 
     // Update text
-    gaugeValue.textContent = oeePercent > 0 ? oeePercent.toFixed(1) + '%' : '--';
+    gaugeValue.textContent = oeePercent > 0 ? fmtPct(oeePercent) : '--';
 
     // Calculate stroke-dashoffset (502.65 = circumference of r=80 circle)
     const circumference = 502.65;
@@ -1800,137 +1783,247 @@ window.askClaudeQuestion = function() {
     }
 };
 
-// Chat panel functionality
-let chatSessionId = null;
-let isChatPanelOpen = false;
+// Chat Widget
+let chatSessionId = 'session-' + Date.now();
 
-function toggleChatPanel() {
-    const chatPanel = document.getElementById('chat-panel');
-    const toggleBtn = document.getElementById('chat-toggle-btn');
+const USER_ICON = '<svg class="avatar" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
+const AGENT_ICON = '<svg class="avatar" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>';
 
-    if (!chatPanel || !toggleBtn) return;
+const CHAT_WELCOME = `
+<div class="chat-welcome">
+    <svg class="chat-welcome-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+    <h3>EdgeMind Assistant</h3>
+    <p>Ask me about factory metrics, OEE performance, production lines, or anomaly detection.</p>
+</div>`;
 
-    isChatPanelOpen = !isChatPanelOpen;
+function parseMarkdown(text) {
+    return text
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+        .replace(/\n/g, '<br>');
+}
 
-    if (isChatPanelOpen) {
-        chatPanel.classList.add('active');
-        toggleBtn.style.display = 'none';
-
-        // Focus on input
-        const input = document.getElementById('chat-input');
-        if (input) {
-            setTimeout(() => input.focus(), 300);
+function toggleChat() {
+    const panel = document.getElementById('chat-panel');
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+        document.getElementById('chat-input').focus();
+        // Show welcome on first open
+        const messages = document.getElementById('chat-messages');
+        if (!messages.innerHTML.trim()) {
+            messages.innerHTML = CHAT_WELCOME;
         }
-    } else {
-        chatPanel.classList.remove('active');
-        toggleBtn.style.display = 'block';
     }
 }
 
-function appendToChat(role, message) {
-    const chatMessages = document.getElementById('chat-messages');
-    if (!chatMessages) return;
-
-    // Remove suggested questions if they exist
-    const suggestedQuestions = chatMessages.querySelector('.suggested-questions');
-    const welcomeMsg = chatMessages.querySelector('.chat-welcome');
-    if (suggestedQuestions) suggestedQuestions.remove();
-    if (welcomeMsg) welcomeMsg.remove();
-
-    const messageEl = document.createElement('div');
-    messageEl.className = `chat-message ${role}`;
-
-    // Escape HTML to prevent XSS
-    const escapedMessage = escapeHtml(message);
-    messageEl.innerHTML = escapedMessage;
-
-    chatMessages.appendChild(messageEl);
-
-    // Auto-scroll to bottom
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-async function askAgent(question) {
-    if (!question || !question.trim()) return;
-
-    try {
-        // Append user message
-        appendToChat('user', question);
-
-        // Show loading indicator
-        appendToChat('loading', 'Agent is thinking...');
-
-        // Send request to backend
-        const response = await fetch('/api/agent/ask', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                question: question,
-                sessionId: chatSessionId
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        // Remove loading indicator
-        const chatMessages = document.getElementById('chat-messages');
-        const loadingMsg = chatMessages.querySelector('.chat-message.loading');
-        if (loadingMsg) loadingMsg.remove();
-
-        // Store session ID for follow-up questions
-        if (data.sessionId) {
-            chatSessionId = data.sessionId;
-        }
-
-        // Append agent response
-        appendToChat('agent', data.answer || 'Sorry, I could not process your request.');
-
-    } catch (error) {
-        console.error('Failed to ask agent:', error);
-
-        // Remove loading indicator
-        const chatMessages = document.getElementById('chat-messages');
-        const loadingMsg = chatMessages.querySelector('.chat-message.loading');
-        if (loadingMsg) loadingMsg.remove();
-
-        // Show error message
-        appendToChat('agent', 'Sorry, I encountered an error. Please try again later.');
-    }
-}
-
-function sendChatMessage() {
+async function sendChat() {
     const input = document.getElementById('chat-input');
-    if (!input) return;
-
-    const question = input.value.trim();
-    if (!question) return;
-
-    // Clear input
-    input.value = '';
-
-    // Send to agent
-    askAgent(question);
-}
-
-function handleSuggestedQuestion(question) {
-    askAgent(question);
-}
-
-// Setup Enter key for chat input
-document.addEventListener('DOMContentLoaded', () => {
-    const chatInput = document.getElementById('chat-input');
-    if (chatInput) {
-        chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                sendChatMessage();
-            }
-        });
+    const messages = document.getElementById('chat-messages');
+    const sendBtn = document.getElementById('chat-send');
+    const prompt = input.value.trim();
+    
+    if (!prompt) return;
+    
+    // Clear welcome message if present
+    if (messages.querySelector('.chat-welcome')) {
+        messages.innerHTML = '';
     }
-});
+    
+    // Add user message
+    messages.innerHTML += `<div class="chat-message user">${USER_ICON}<div class="bubble">${escapeHtml(prompt)}</div></div>`;
+    input.value = '';
+    sendBtn.disabled = true;
+    
+    // Add assistant message placeholder
+    const assistantMsg = document.createElement('div');
+    assistantMsg.className = 'chat-message assistant streaming';
+    assistantMsg.innerHTML = `${AGENT_ICON}<div class="bubble"></div>`;
+    messages.appendChild(assistantMsg);
+    messages.scrollTop = messages.scrollHeight;
+    
+    const bubbleDiv = assistantMsg.querySelector('.bubble');
+    
+    try {
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, sessionId: chatSessionId })
+        });
+        
+        if (!response.ok) throw new Error('Chat failed');
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let text = '';
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const chunk = decoder.decode(value, { stream: true });
+            for (const line of chunk.split('\n')) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        text += data;
+                    } catch {
+                        text += line.slice(6);
+                    }
+                }
+            }
+            bubbleDiv.innerHTML = parseMarkdown(text);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        assistantMsg.classList.remove('streaming');
+    } catch (err) {
+        bubbleDiv.textContent = 'Error: Could not reach assistant';
+        assistantMsg.classList.remove('streaming');
+    }
+    
+    sendBtn.disabled = false;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+
+// Chat panel functionality
+// let isChatPanelOpen = false;
+
+// function toggleChatPanel() {
+//     const chatPanel = document.getElementById('chat-panel');
+//     const toggleBtn = document.getElementById('chat-toggle-btn');
+
+//     if (!chatPanel || !toggleBtn) return;
+
+//     isChatPanelOpen = !isChatPanelOpen;
+
+//     if (isChatPanelOpen) {
+//         chatPanel.classList.add('active');
+//         toggleBtn.style.display = 'none';
+
+//         // Focus on input
+//         const input = document.getElementById('chat-input');
+//         if (input) {
+//             setTimeout(() => input.focus(), 300);
+//         }
+//     } else {
+//         chatPanel.classList.remove('active');
+//         toggleBtn.style.display = 'block';
+//     }
+// }
+
+// function appendToChat(role, message) {
+//     const chatMessages = document.getElementById('chat-messages');
+//     if (!chatMessages) return;
+
+//     // Remove suggested questions if they exist
+//     const suggestedQuestions = chatMessages.querySelector('.suggested-questions');
+//     const welcomeMsg = chatMessages.querySelector('.chat-welcome');
+//     if (suggestedQuestions) suggestedQuestions.remove();
+//     if (welcomeMsg) welcomeMsg.remove();
+
+//     const messageEl = document.createElement('div');
+//     messageEl.className = `chat-message ${role}`;
+
+//     // Escape HTML to prevent XSS
+//     const escapedMessage = escapeHtml(message);
+//     messageEl.innerHTML = escapedMessage;
+
+//     chatMessages.appendChild(messageEl);
+
+//     // Auto-scroll to bottom
+//     chatMessages.scrollTop = chatMessages.scrollHeight;
+// }
+
+// async function askAgent(question) {
+//     if (!question || !question.trim()) return;
+
+//     try {
+//         // Append user message
+//         appendToChat('user', question);
+
+//         // Show loading indicator
+//         appendToChat('loading', 'Agent is thinking...');
+
+//         // Send request to backend
+//         const response = await fetch('/api/agent/ask', {
+//             method: 'POST',
+//             headers: {
+//                 'Content-Type': 'application/json'
+//             },
+//             body: JSON.stringify({
+//                 question: question,
+//                 sessionId: chatSessionId
+//             })
+//         });
+
+//         if (!response.ok) {
+//             throw new Error(`HTTP error! status: ${response.status}`);
+//         }
+
+//         const data = await response.json();
+
+//         // Remove loading indicator
+//         const chatMessages = document.getElementById('chat-messages');
+//         const loadingMsg = chatMessages.querySelector('.chat-message.loading');
+//         if (loadingMsg) loadingMsg.remove();
+
+//         // Store session ID for follow-up questions
+//         if (data.sessionId) {
+//             chatSessionId = data.sessionId;
+//         }
+
+//         // Append agent response
+//         appendToChat('agent', data.answer || 'Sorry, I could not process your request.');
+
+//     } catch (error) {
+//         console.error('Failed to ask agent:', error);
+
+//         // Remove loading indicator
+//         const chatMessages = document.getElementById('chat-messages');
+//         const loadingMsg = chatMessages.querySelector('.chat-message.loading');
+//         if (loadingMsg) loadingMsg.remove();
+
+//         // Show error message
+//         appendToChat('agent', 'Sorry, I encountered an error. Please try again later.');
+//     }
+// }
+
+// function sendChatMessage() {
+//     const input = document.getElementById('chat-input');
+//     if (!input) return;
+
+//     const question = input.value.trim();
+//     if (!question) return;
+
+//     // Clear input
+//     input.value = '';
+
+//     // Send to agent
+//     askAgent(question);
+// }
+
+// function handleSuggestedQuestion(question) {
+//     askAgent(question);
+// }
+
+// // Setup Enter key for chat input
+// document.addEventListener('DOMContentLoaded', () => {
+//     const chatInput = document.getElementById('chat-input');
+//     if (chatInput) {
+//         chatInput.addEventListener('keypress', (e) => {
+//             if (e.key === 'Enter') {
+//                 e.preventDefault();
+//                 sendChatMessage();
+//             }
+//         });
+//     }
+// });
