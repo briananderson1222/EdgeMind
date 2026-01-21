@@ -72,6 +72,10 @@ services:
     volumes:
       # Mount AWS credentials for Bedrock access
       - ${HOME}/.aws:/home/nodejs/.aws:ro
+      # Mount frontend files for live reload (no rebuild needed)
+      - ../index.html:/app/index.html:ro
+      - ../styles.css:/app/styles.css:ro
+      - ../app.js:/app/app.js:ro
     depends_on:
       influxdb:
         condition: service_healthy
