@@ -3,6 +3,9 @@ const mqtt = require('mqtt');
 const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
 const WebSocket = require('ws');
 const express = require('express');
+const expressOasGenerator = require('express-oas-generator');
+const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
 const { influxDB, writeApi, queryApi, Point, parseTopicToInflux, writeSparkplugMetric } = require('./lib/influx/client');
 const { createCmmsProvider } = require('./lib/cmms-interface');
 const aiModule = require('./lib/ai');
@@ -43,6 +46,36 @@ const {
 
 // Initialize services
 const app = express();
+
+// OpenAPI spec generation using swagger-jsdoc for inline annotations
+const GENERATE_OPENAPI = process.env.GENERATE_OPENAPI === 'true';
+if (GENERATE_OPENAPI) {
+  const swaggerSpec = swaggerJsdoc({
+    definition: {
+      openapi: '3.0.0',
+      info: {
+        title: 'EdgeMind Factory Intelligence API',
+        version: '2.0.0',
+        description: 'Real-time factory monitoring API for OEE analysis, equipment health, waste tracking, and batch processing. Supports three enterprises: A & B (discrete manufacturing with OEE) and C (pharmaceutical bioprocessing with ISA-88 batch control).'
+      },
+      tags: [
+        { name: 'oee', description: 'Overall Equipment Effectiveness (Availability × Performance × Quality). World-class target: 85%' },
+        { name: 'equipment', description: 'Equipment states: RUNNING, IDLE, DOWN, MAINTENANCE' },
+        { name: 'waste', description: 'Waste tracking. Enterprise A codes: CHK, DIM, SED. Enterprise B: SEAL, LABEL, FILL' },
+        { name: 'batch', description: 'ISA-88 batch control for Enterprise C pharmaceutical bioprocessing' },
+        { name: 'schema', description: 'Factory schema discovery: Enterprise > Site > Area > Machine' },
+        { name: 'agent', description: 'AI agent for factory analysis' },
+        { name: 'cmms', description: 'Maintenance management system integration' }
+      ]
+    },
+    apis: ['./server.js', './lib/**/*.js']
+  });
+  
+  app.get('/api-spec/v3', (req, res) => res.json(swaggerSpec));
+  app.get('/api-spec', (req, res) => res.json(swaggerSpec));
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
+
 const bedrockClient = new BedrockRuntimeClient({ region: CONFIG.bedrock.region });
 
 // Initialize CMMS provider
@@ -542,7 +575,25 @@ app.post('/api/settings', express.json(), (req, res) => {
   }
 });
 
-// API endpoint for 24h OEE aggregate
+/**
+ * @swagger
+ * /api/oee:
+ *   get:
+ *     operationId: getOEE
+ *     summary: Get 24-hour OEE aggregate for an enterprise
+ *     description: Returns Overall Equipment Effectiveness (Availability × Performance × Quality) calculated over 24 hours. OEE measures manufacturing productivity - world-class target is 85%. Use this to assess overall factory performance.
+ *     tags: [oee]
+ *     parameters:
+ *       - in: query
+ *         name: enterprise
+ *         schema:
+ *           type: string
+ *           enum: [Enterprise A, Enterprise B, ALL]
+ *         description: Enterprise to query. Enterprise A (glass manufacturing), Enterprise B (packaging). Enterprise C uses batch processing, not OEE.
+ *     responses:
+ *       200:
+ *         description: OEE metrics with availability, performance, and quality breakdown
+ */
 app.get('/api/oee', async (req, res) => {
   try {
     // SECURITY: Validate enterprise parameter
@@ -569,8 +620,18 @@ app.get('/api/oee/breakdown', async (req, res) => {
     res.status(500).json({ error: 'Failed to query OEE breakdown' });
   }
 });
-
-// NEW: Factory status endpoint with hierarchical enterprise/site OEE
+/**
+ * @swagger
+ * /api/factory/status:
+ *   get:
+ *     operationId: getFactoryStatus
+ *     summary: Get hierarchical factory OEE status
+ *     description: Returns OEE status organized by enterprise and site hierarchy. Use this for a high-level overview of all factory operations.
+ *     tags: [oee]
+ *     responses:
+ *       200:
+ *         description: Hierarchical OEE status by enterprise and site
+ */
 app.get('/api/factory/status', async (req, res) => {
   try {
     const status = await queryFactoryStatus();
@@ -582,10 +643,28 @@ app.get('/api/factory/status', async (req, res) => {
 });
 
 /**
- * GET /api/oee/v2 - Enhanced OEE calculation with tier-based strategy
- * Query params:
- *   - enterprise: 'ALL' | specific enterprise name (default: ALL)
- *   - site: optional site filter
+ * @swagger
+ * /api/oee/v2:
+ *   get:
+ *     operationId: getOEEv2
+ *     summary: Enhanced OEE with tier-based calculation
+ *     description: Advanced OEE calculation using tier-based strategy. Returns detailed breakdown of availability (uptime vs planned time), performance (actual vs ideal cycle time), and quality (good units vs total). Identifies the limiting factor.
+ *     tags: [oee]
+ *     parameters:
+ *       - in: query
+ *         name: enterprise
+ *         schema:
+ *           type: string
+ *           enum: [Enterprise A, Enterprise B, ALL]
+ *         description: Filter by enterprise (default ALL)
+ *       - in: query
+ *         name: site
+ *         schema:
+ *           type: string
+ *         description: Optional site filter (e.g., Dallas, Chicago)
+ *     responses:
+ *       200:
+ *         description: Detailed OEE with component breakdown and confidence score
  */
 app.get('/api/oee/v2', async (req, res) => {
   try {
@@ -659,7 +738,18 @@ app.get('/api/oee/discovery', async (req, res) => {
   }
 });
 
-// NEW: Schema discovery endpoint - returns all measurements with metadata
+/**
+ * @swagger
+ * /api/schema/measurements:
+ *   get:
+ *     operationId: getSchemaMeasurements
+ *     summary: Get all available measurements with metadata
+ *     description: Lists all measurements discovered from MQTT topics with their data types, last values, and update timestamps. Cached for 5 minutes. Use this to understand what data is available in the factory.
+ *     tags: [schema]
+ *     responses:
+ *       200:
+ *         description: Array of measurements with metadata
+ */
 app.get('/api/schema/measurements', async (req, res) => {
   try {
     // Try to refresh cache if needed
@@ -701,7 +791,18 @@ app.get('/api/schema/measurements', async (req, res) => {
   }
 });
 
-// NEW: Schema hierarchy endpoint - returns topic hierarchy tree
+/**
+ * @swagger
+ * /api/schema/hierarchy:
+ *   get:
+ *     operationId: getSchemaHierarchy
+ *     summary: Get factory topic hierarchy tree
+ *     description: Returns the factory structure as Enterprise > Site > Area > Machine hierarchy. Use this to understand the organizational structure and navigate to specific equipment.
+ *     tags: [schema]
+ *     responses:
+ *       200:
+ *         description: Hierarchical tree of factory structure
+ */
 app.get('/api/schema/hierarchy', async (req, res) => {
   try {
     // Try to refresh cache if needed
@@ -738,7 +839,18 @@ app.get('/api/schema/hierarchy', async (req, res) => {
   }
 });
 
-// NEW: Equipment states endpoint - returns current equipment states
+/**
+ * @swagger
+ * /api/equipment/states:
+ *   get:
+ *     operationId: getEquipmentStates
+ *     summary: Get current equipment states across all enterprises
+ *     description: Returns real-time equipment states (RUNNING, IDLE, DOWN, MAINTENANCE) with downtime duration. Critical for identifying production bottlenecks. DOWN equipment should be prioritized for investigation.
+ *     tags: [equipment]
+ *     responses:
+ *       200:
+ *         description: List of equipment with current state, duration, and summary counts
+ */
 app.get('/api/equipment/states', async (req, res) => {
   try {
     const now = Date.now();
@@ -785,7 +897,25 @@ app.get('/api/equipment/states', async (req, res) => {
   }
 });
 
-// NEW: OEE lines endpoint - returns line-level OEE grouped by enterprise/site/area
+/**
+ * @swagger
+ * /api/oee/lines:
+ *   get:
+ *     operationId: getOEELines
+ *     summary: Get OEE metrics per production line
+ *     description: Returns OEE for each production line with status classification. Healthy (≥85%), Warning (70-84%), Critical (<70%). Use this to identify underperforming lines that need attention.
+ *     tags: [oee]
+ *     parameters:
+ *       - in: query
+ *         name: enterprise
+ *         schema:
+ *           type: string
+ *           enum: [Enterprise A, Enterprise B, ALL]
+ *         description: Filter by enterprise
+ *     responses:
+ *       200:
+ *         description: Array of production lines with OEE metrics and status
+ */
 app.get('/api/oee/lines', async (req, res) => {
   try {
     // SECURITY: Validate enterprise parameter
@@ -895,7 +1025,18 @@ app.get('/api/oee/lines', async (req, res) => {
   }
 });
 
-// NEW: Waste/Defect tracking endpoint
+/**
+ * @swagger
+ * /api/waste/trends:
+ *   get:
+ *     operationId: getWasteTrends
+ *     summary: Get waste and defect trends over 24 hours
+ *     description: Returns waste/defect data over time for trend analysis. Enterprise A defect codes - CHK (chips), DIM (dimensional), SED (seeds/bubbles). Enterprise B - SEAL, LABEL, FILL. Use Pareto analysis (80/20 rule) to identify top contributors.
+ *     tags: [waste]
+ *     responses:
+ *       200:
+ *         description: Time-series waste data with defect type breakdown
+ */
 app.get('/api/waste/trends', async (req, res) => {
   try {
     const fluxQuery = `
@@ -1102,9 +1243,26 @@ app.get('/api/waste/by-line', async (req, res) => {
 // =============================================================================
 
 /**
- * GET /api/cmms/work-orders - List recent work orders from CMMS
- * Query params:
- *   - limit: Number of work orders to return (default: 10, max: 50)
+ * @swagger
+ * /api/cmms/work-orders:
+ *   get:
+ *     operationId: getCmmsWorkOrders
+ *     summary: List recent maintenance work orders
+ *     description: Returns work orders from the CMMS (Computerized Maintenance Management System). Use this to check scheduled maintenance, open repairs, and equipment service history.
+ *     tags: [cmms]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 50
+ *         description: Number of work orders to return
+ *     responses:
+ *       200:
+ *         description: List of work orders
+ *       503:
+ *         description: CMMS integration not enabled
  */
 app.get('/api/cmms/work-orders', async (req, res) => {
   try {
@@ -1139,7 +1297,25 @@ app.get('/api/cmms/work-orders', async (req, res) => {
 });
 
 /**
- * GET /api/cmms/work-orders/:id - Get specific work order status
+ * @swagger
+ * /api/cmms/work-orders/{id}:
+ *   get:
+ *     operationId: getCmmsWorkOrder
+ *     summary: Get specific work order details
+ *     description: Returns detailed information about a specific maintenance work order by ID.
+ *     tags: [cmms]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Work order ID
+ *     responses:
+ *       200:
+ *         description: Work order details
+ *       404:
+ *         description: Work order not found
  */
 app.get('/api/cmms/work-orders/:id', async (req, res) => {
   try {
@@ -1177,7 +1353,16 @@ app.get('/api/cmms/work-orders/:id', async (req, res) => {
 });
 
 /**
- * GET /api/cmms/health - Check CMMS provider health
+ * @swagger
+ * /api/cmms/health:
+ *   get:
+ *     operationId: getCmmsHealth
+ *     summary: Check CMMS integration health
+ *     description: Returns the status of the CMMS integration including whether it's enabled and connected.
+ *     tags: [cmms]
+ *     responses:
+ *       200:
+ *         description: CMMS health status
  */
 app.get('/api/cmms/health', async (req, res) => {
   if (!cmmsProvider) {
@@ -1207,8 +1392,18 @@ app.get('/api/cmms/health', async (req, res) => {
   }
 });
 
-// NEW: Agent context endpoint - comprehensive data for agentic workflows
-// Uses Promise.allSettled() for resilience when InfluxDB or other services are unavailable
+/**
+ * @swagger
+ * /api/agent/context:
+ *   get:
+ *     operationId: getAgentContext
+ *     summary: Get comprehensive factory context for AI analysis
+ *     description: Returns aggregated factory data including hierarchy, measurements, OEE metrics, and trends. Designed for AI agents to get a complete picture of factory state in one call.
+ *     tags: [agent]
+ *     responses:
+ *       200:
+ *         description: Comprehensive factory context data
+ */
 app.get('/api/agent/context', async (req, res) => {
   // Track data source availability
   const dataSourceStatus = {
@@ -1324,7 +1519,18 @@ app.get('/api/agent/context', async (req, res) => {
   res.json(response);
 });
 
-// NEW: Schema classifications endpoint - returns measurements grouped by classification
+/**
+ * @swagger
+ * /api/schema/classifications:
+ *   get:
+ *     operationId: getSchemaClassifications
+ *     summary: Get measurements grouped by classification
+ *     description: Returns measurements organized by type (OEE components, waste/defects, batch parameters, etc.). Useful for understanding what categories of data are available.
+ *     tags: [schema]
+ *     responses:
+ *       200:
+ *         description: Measurements grouped by classification type
+ */
 app.get('/api/schema/classifications', async (req, res) => {
   try {
     // Try to refresh cache if needed
@@ -1393,9 +1599,32 @@ app.get('/api/schema/classifications', async (req, res) => {
 // =============================================================================
 
 /**
- * POST /api/agent/ask - Proxy questions to AWS AgentCore orchestrator
- * Body: { question: string, sessionId?: string }
- * Response: { answer: string, sessionId: string }
+ * @swagger
+ * /api/agent/ask:
+ *   post:
+ *     operationId: askAgent
+ *     summary: Ask the AI agent a question about the factory
+ *     description: Sends a question to the AI agent for analysis. The agent can analyze OEE, equipment health, waste trends, and provide recommendations. Supports session continuity for follow-up questions.
+ *     tags: [agent]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [question]
+ *             properties:
+ *               question:
+ *                 type: string
+ *                 description: Question about factory operations
+ *               sessionId:
+ *                 type: string
+ *                 description: Optional session ID for conversation continuity
+ *     responses:
+ *       200:
+ *         description: Agent response with answer
+ *       503:
+ *         description: AgentCore not configured
  */
 app.post('/api/agent/ask', express.json(), async (req, res) => {
   try {
@@ -1452,7 +1681,16 @@ app.post('/api/agent/ask', express.json(), async (req, res) => {
 });
 
 /**
- * GET /api/agent/health - Check AgentCore connectivity
+ * @swagger
+ * /api/agent/health:
+ *   get:
+ *     operationId: getAgentHealth
+ *     summary: Check AI agent health and connectivity
+ *     description: Returns the status of the AI agent including whether it's configured and reachable.
+ *     tags: [agent]
+ *     responses:
+ *       200:
+ *         description: Agent health status
  */
 app.get('/api/agent/health', async (req, res) => {
   if (!agentCoreClient) {
@@ -1555,8 +1793,16 @@ app.get('/api/waste/breakdown', async (req, res) => {
 });
 
 /**
- * GET /api/batch/health - Batch process health for Enterprise C (stub)
- * Returns mock data until ISA-88 batch tracking is implemented
+ * @swagger
+ * /api/batch/health:
+ *   get:
+ *     operationId: getBatchHealth
+ *     summary: Get batch process health for Enterprise C (pharmaceutical)
+ *     description: Returns ISA-88 batch control status for pharmaceutical bioprocessing. Enterprise C does NOT use OEE - use batch terminology instead. Phases - Inoculation → Growth → Stationary → Harvest. Key parameters - pH, dissolved oxygen, temperature. Track yield rate and batch completion rate.
+ *     tags: [batch]
+ *     responses:
+ *       200:
+ *         description: Batch status with phase progress and key parameters
  */
 app.get('/api/batch/health', async (req, res) => {
   try {
@@ -1645,6 +1891,7 @@ app.post('/api/influx/query', express.json(), async (req, res) => {
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  if (GENERATE_OPENAPI) console.log('📝 OpenAPI spec available at /api-spec/v3');
   console.log(`🏭 MQTT: ${mqttClient.connected ? 'Connected' : 'Connecting...'}`);
   console.log(`📈 InfluxDB: ${CONFIG.influxdb.url}`);
   if (CONFIG.disableInsights) {

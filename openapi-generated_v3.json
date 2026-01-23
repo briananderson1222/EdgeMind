@@ -1,0 +1,506 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "EdgeMind Factory API",
+    "version": "1.0.0",
+    "description": "Real-time factory intelligence API for querying OEE metrics, trends, and equipment status"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "/health",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "online"
+                    },
+                    "mqtt": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "influxdb": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "stats": {
+                      "type": "object",
+                      "properties": {
+                        "messageCount": {
+                          "type": "number",
+                          "example": 5020
+                        },
+                        "anomalyCount": {
+                          "type": "number",
+                          "example": 0
+                        },
+                        "lastUpdate": {
+                          "type": "string",
+                          "example": "2026-01-15T23:00:10.677Z"
+                        },
+                        "influxWrites": {
+                          "type": "number",
+                          "example": 5020
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": []
+      }
+    },
+    "/api/trends": {
+      "get": {
+        "summary": "/api/trends",
+        "responses": {},
+        "tags": [
+          "trends"
+        ]
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "summary": "/api/chat",
+        "responses": {},
+        "tags": []
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "summary": "/api/settings",
+        "responses": {},
+        "tags": []
+      },
+      "post": {
+        "summary": "/api/settings",
+        "responses": {},
+        "tags": []
+      }
+    },
+    "/api/oee": {
+      "get": {
+        "summary": "/api/oee",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "average": {
+                      "example": null,
+                      "nullable": true
+                    },
+                    "period": {
+                      "type": "string",
+                      "example": "24h"
+                    },
+                    "enterprise": {
+                      "type": "string",
+                      "example": "ALL"
+                    },
+                    "dataPoints": {
+                      "type": "number",
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "oee"
+        ]
+      }
+    },
+    "/api/oee/breakdown": {
+      "get": {
+        "summary": "/api/oee/breakdown",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "period": {
+                      "type": "string",
+                      "example": "24h"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {}
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "unauthorized access"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "oee"
+        ]
+      }
+    },
+    "/api/factory/status": {
+      "get": {
+        "summary": "/api/factory/status",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enterprises": {
+                      "type": "array",
+                      "items": {},
+                      "example": [
+                        null
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "unauthorized access"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "factory"
+        ]
+      }
+    },
+    "/api/oee/v2": {
+      "get": {
+        "summary": "/api/oee/v2",
+        "responses": {},
+        "tags": [
+          "oee"
+        ]
+      }
+    },
+    "/api/oee/discovery": {
+      "get": {
+        "summary": "/api/oee/discovery",
+        "responses": {},
+        "tags": [
+          "oee"
+        ]
+      }
+    },
+    "/api/schema/measurements": {
+      "get": {
+        "summary": "/api/schema/measurements",
+        "responses": {},
+        "tags": []
+      }
+    },
+    "/api/schema/hierarchy": {
+      "get": {
+        "summary": "/api/schema/hierarchy",
+        "responses": {},
+        "tags": []
+      }
+    },
+    "/api/equipment/states": {
+      "get": {
+        "summary": "/api/equipment/states",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "states": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "enterprise": {
+                            "type": "string"
+                          },
+                          "site": {
+                            "type": "string"
+                          },
+                          "machine": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "number"
+                          },
+                          "stateName": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "nullable": true
+                          },
+                          "durationMs": {
+                            "type": "number"
+                          },
+                          "durationFormatted": {
+                            "type": "string"
+                          },
+                          "lastUpdate": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "enterprise",
+                          "site",
+                          "machine",
+                          "state",
+                          "stateName",
+                          "color",
+                          "reason",
+                          "durationMs",
+                          "durationFormatted",
+                          "lastUpdate"
+                        ]
+                      },
+                      "example": [
+                        {
+                          "enterprise": "Enterprise B",
+                          "site": "Site3",
+                          "machine": "labelerline01",
+                          "state": 3,
+                          "stateName": "RUNNING",
+                          "color": "green",
+                          "reason": null,
+                          "durationMs": 543,
+                          "durationFormatted": "0s",
+                          "lastUpdate": "2026-01-15T23:00:08.287Z"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "running": {
+                          "type": "number",
+                          "example": 17
+                        },
+                        "idle": {
+                          "type": "number",
+                          "example": 11
+                        },
+                        "down": {
+                          "type": "number",
+                          "example": 4
+                        },
+                        "unknown": {
+                          "type": "number",
+                          "example": 0
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "example": "2026-01-15T23:00:08.830Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "equipment"
+        ]
+      }
+    },
+    "/api/oee/lines": {
+      "get": {
+        "summary": "/api/oee/lines",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "lines": {
+                      "type": "array",
+                      "items": {},
+                      "example": [
+                        null
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "example": "2026-01-15T23:00:08.836Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "oee"
+        ]
+      }
+    },
+    "/api/waste/trends": {
+      "get": {
+        "summary": "/api/waste/trends",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "trends": {
+                      "type": "array",
+                      "items": {},
+                      "example": [
+                        null
+                      ]
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {}
+                    },
+                    "linesSummary": {
+                      "type": "array",
+                      "items": {},
+                      "example": [
+                        null
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "example": "2026-01-15T23:00:08.841Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trends"
+        ]
+      }
+    },
+    "/api/waste/by-line": {
+      "get": {
+        "summary": "/api/waste/by-line",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "lines": {
+                      "type": "array",
+                      "items": {},
+                      "example": [
+                        null
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "example": "2026-01-15T23:00:08.855Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": []
+      }
+    },
+    "/api/cmms/work-orders": {
+      "get": {
+        "summary": "/api/cmms/work-orders",
+        "responses": {},
+        "tags": []
+      }
+    },
+    "/api/cmms/work-orders/{id}": {
+      "get": {
+        "summary": "/api/cmms/work-orders/{id}",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {},
+        "tags": []
+      }
+    },
+    "/api/cmms/health": {
+      "get": {
+        "summary": "/api/cmms/health",
+        "responses": {},
+        "tags": []
+      }
+    },
+    "/api/agent/context": {
+      "get": {
+        "summary": "/api/agent/context",
+        "responses": {},
+        "tags": []
+      }
+    },
+    "/api/schema/classifications": {
+      "get": {
+        "summary": "/api/schema/classifications",
+        "responses": {},
+        "tags": []
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "factory"
+    },
+    {
+      "name": "oee"
+    },
+    {
+      "name": "equipment"
+    },
+    {
+      "name": "trends"
+    }
+  ]
+}
