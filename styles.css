@@ -2027,7 +2027,7 @@
         }
 
         /* Chat Panel Styles */
-        .chat-toggle-btn {
+        /* .chat-toggle-btn {
             position: fixed;
             bottom: 30px;
             right: 30px;
@@ -2281,7 +2281,7 @@
             transform: none;
         }
 
-        /* Responsive adjustments for chat panel */
+        // Responsive adjustments for chat panel 
         @media (max-width: 768px) {
             .chat-panel {
                 width: calc(100vw - 40px);
@@ -2296,10 +2296,10 @@
                 padding: 12px 20px;
                 font-size: 0.85rem;
             }
-        }
+        } */
 
         /* Chat Widget */
-        /* .chat-widget {
+        .chat-widget {
             position: fixed;
             bottom: 20px;
             right: 20px;
@@ -2523,4 +2523,4 @@
         .chat-send:disabled {
             opacity: 0.5;
             cursor: not-allowed;
-        } */
+        }

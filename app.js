@@ -19,9 +19,6 @@ const SLEEPING_AGENT_MESSAGES = [
     "The AI took a personal day. Machines don't judge."
 ];
 
-// Format percentage value, returns '--' for null/undefined
-const fmtPct = (v) => (v !== null && v !== undefined) ? `${Number(v).toFixed(1)}%` : '--';
-
 // Dynamic WebSocket URL - matches page protocol (ws:// for http, wss:// for https)
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL = window.location.hostname === 'localhost'
@@ -881,18 +878,37 @@ function renderLineOEEGrid(lines) {
         if (oee >= 85) statusClass = 'healthy';
         else if (oee >= 70) statusClass = 'warning';
 
+        // Construct line name from available fields
+        // API returns: enterprise, site, line (area), oee
+        const lineName = line.name || `${line.site} - ${line.line || 'Line'}`;
+
+        // Format breakdown - always show A/P/Q labels with "--" when unavailable
+        const fmtVal = (v) => (v !== null && v !== undefined) ? `${v}%` : '--';
+        const breakdownHtml = `
+            <div class="line-breakdown">
+                <div class="line-breakdown-item">
+                    <span class="line-breakdown-label">A</span>
+                    <span class="line-breakdown-value">${fmtVal(line.availability)}</span>
+                </div>
+                <div class="line-breakdown-item">
+                    <span class="line-breakdown-label">P</span>
+                    <span class="line-breakdown-value">${fmtVal(line.performance)}</span>
+                </div>
+                <div class="line-breakdown-item">
+                    <span class="line-breakdown-label">Q</span>
+                    <span class="line-breakdown-value">${fmtVal(line.quality)}</span>
+                </div>
+            </div>
+        `;
+
         return `
             <div class="line-card ${statusClass}" data-enterprise="${line.enterprise || ''}">
-                <div class="line-header">
-                    <div class="line-enterprise">${line.enterprise || 'Unknown'}</div>
-                    <div class="line-location">${[line.site, line.line !== 'unknown' ? line.line : null].filter(Boolean).join(' / ') || 'Unknown Location'}</div>
+                <div class="line-name" title="${lineName}">${lineName}</div>
+                <div class="line-oee-value">${oee.toFixed(1)}%</div>
+                <div class="line-oee-bar">
+                    <div class="line-oee-bar-fill" style="width: ${oee}%"></div>
                 </div>
-                <div class="line-oee-value">${fmtPct(oee)}</div>
-                <div class="line-breakdown">
-                    <div class="line-breakdown-item"><span class="line-breakdown-label">A</span><span class="line-breakdown-value">${fmtPct(line.availability)}</span></div>
-                    <div class="line-breakdown-item"><span class="line-breakdown-label">P</span><span class="line-breakdown-value">${fmtPct(line.performance)}</span></div>
-                    <div class="line-breakdown-item"><span class="line-breakdown-label">Q</span><span class="line-breakdown-value">${fmtPct(line.quality)}</span></div>
-                </div>
+                ${breakdownHtml}
             </div>
         `;
     }).join('');
@@ -1294,8 +1310,9 @@ async function fetchOEE() {
         const oeeStatus = document.getElementById('oee-status');
 
         if (data.average !== null) {
-            oeeScore.textContent = fmtPct(data.average);
-            oeeStatus.textContent = `${data.period} avg • ${enterprise === 'ALL' ? 'All Enterprises' : enterprise}`;
+            oeeScore.textContent = data.average.toFixed(1) + '%';
+            const displayName = enterprise === 'ALL' ? 'All Enterprises' : enterprise;
+            oeeStatus.textContent = `${data.period} avg • ${displayName}`;
             oeeStatus.className = 'metric-change positive';
 
             // Update scorecard gauge
@@ -1321,7 +1338,7 @@ function updateOEEGauge(oeePercent) {
     if (!gaugeValue || !gaugeFill) return;
 
     // Update text
-    gaugeValue.textContent = oeePercent > 0 ? fmtPct(oeePercent) : '--';
+    gaugeValue.textContent = oeePercent > 0 ? oeePercent.toFixed(1) + '%' : '--';
 
     // Calculate stroke-dashoffset (502.65 = circumference of r=80 circle)
     const circumference = 502.65;
@@ -1797,13 +1814,7 @@ const CHAT_WELCOME = `
 </div>`;
 
 function parseMarkdown(text) {
-    return text
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/`([^`]+)`/g, '<code>$1</code>')
-        .replace(/^- (.+)$/gm, '<li>$1</li>')
-        .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
-        .replace(/\n/g, '<br>');
+    return marked.parse(text);
 }
 
 function toggleChat() {
@@ -1895,6 +1906,7 @@ function escapeHtml(text) {
 
 
 // Chat panel functionality
+// let chatSessionId = null;
 // let isChatPanelOpen = false;
 
 // function toggleChatPanel() {
