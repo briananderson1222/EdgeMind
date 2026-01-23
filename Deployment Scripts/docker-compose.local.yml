@@ -2,11 +2,11 @@
 # Usage: ./local-deploy.sh (recommended) or docker compose -f docker-compose.local.yml up -d
 
 services:
-  chromadb:
+  bedrock-kb:
     image: chromadb/chroma:latest
-    container_name: edgemind-chromadb
+    container_name: edgemind-bedrock-kb
     ports:
-      - "${CHROMA_PORT:-8000}:8000"
+      - "${CHROMA_PORT:-8002}:8000"
     environment:
       - ANONYMIZED_TELEMETRY=FALSE
     volumes:
@@ -17,6 +17,24 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+  bedrock-kb-init:
+    build:
+      context: ../agent/edgemindassistant
+      dockerfile: Dockerfile
+    container_name: edgemind-bedrock-kb-init
+    command: ["python", "scripts/ingest_kb.py"]
+    environment:
+      - CHROMA_HOST=bedrock-kb
+      - CHROMA_PORT=8000
+      - KB_COLLECTION=${KB_COLLECTION:-edgemind_sops}
+      - KB_PATH=/app/knowledge-base
+    volumes:
+      - ../knowledge-base:/app/knowledge-base:ro
+    depends_on:
+      bedrock-kb:
+        condition: service_healthy
+    restart: "no"
 
   influxdb:
     image: influxdb:2.7
@@ -39,7 +57,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  agent:
+  agentcore-runtime:
     build:
       context: ../agent/edgemindassistant
       dockerfile: Dockerfile
@@ -48,13 +66,50 @@ services:
       - "8080:8080"
     environment:
       - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_PROFILE=${AWS_PROFILE:-default}
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
       - AWS_SESSION_TOKEN
       - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-20250514-v1:0}
+      - EDGEMIND_MCP_SERVER_URL=http://agentcore-gateway:8000/mcp
+      # Knowledge Base config - local ChromaDB
+      - KB_BACKEND=${KB_BACKEND:-local}
+      - CHROMA_HOST=bedrock-kb
+      - CHROMA_PORT=8000
+      - KB_COLLECTION=${KB_COLLECTION:-edgemind_sops}
+      # For Bedrock KB (when KB_BACKEND=bedrock)
+      - KNOWLEDGE_BASE_ID=${KNOWLEDGE_BASE_ID:-}
+    depends_on:
+      agentcore-gateway:
+        condition: service_healthy
+      bedrock-kb:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  agentcore-gateway:
+    build:
+      context: /Users/anderbs/dev/github/awslabs/mcp/src/openapi-mcp-server
+      dockerfile: Dockerfile
+    container_name: edgemind-agentcore-gateway
+    ports:
+      - "8001:8000"
+    environment:
+      - API_NAME=edgemind
+      - API_BASE_URL=http://backend:3000
+      - API_SPEC_URL=http://backend:3000/api-spec/v3
+      - LOG_LEVEL=INFO
+      - ENABLE_PROMETHEUS=false
+      - ENABLE_OPERATION_PROMPTS=true
+    command: ["--transport", "http", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -70,6 +125,8 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=${NODE_ENV:-development}
+      # OpenAPI spec generation for agentcore-gateway
+      - GENERATE_OPENAPI=true
       # MQTT Configuration
       - MQTT_HOST=${MQTT_HOST:-mqtt://virtualfactory.proveit.services:1883}
       - MQTT_USERNAME=${MQTT_USERNAME:-proveitreadonly}
@@ -80,10 +137,10 @@ services:
       - INFLUXDB_ORG=${INFLUXDB_ORG:-proveit}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-factory}
       # ChromaDB Configuration (uses internal Docker network)
-      - CHROMA_HOST=chromadb
+      - CHROMA_HOST=bedrock-kb
       - CHROMA_PORT=${CHROMA_PORT:-8000}
       # AgentCore agent URL (internal Docker network)
-      - AGENTCORE_URL=http://agent:8080
+      - AGENTCORE_URL=http://agentcore-runtime:8080
       # AI Configuration (AWS Bedrock)
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - AWS_PROFILE=${AWS_PROFILE:-default}
@@ -105,9 +162,7 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
-      chromadb:
-        condition: service_healthy
-      agent:
+      bedrock-kb:
         condition: service_healthy
     restart: unless-stopped
 
