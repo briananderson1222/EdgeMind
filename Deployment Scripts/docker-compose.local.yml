@@ -142,7 +142,7 @@ services:
       - AGENTCORE_URL=http://agentcore-runtime:8080
       # AI Configuration (AWS Bedrock)
       - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_PROFILE=${AWS_PROFILE:-default}
+      # Note: Don't set AWS_PROFILE - it conflicts with explicit credentials
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
       - AWS_SESSION_TOKEN
