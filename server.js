@@ -282,7 +282,7 @@ mqttClient.on('message', async (topic, message) => {
   if (topicLower.includes('statereason')) {
     const parts = topic.split('/');
     // Pattern: Enterprise A/Dallas/Line 1/Area/Machine/State/StateReason
-    if (parts.length >= 5) {
+    if (parts.length >= 7) {
       const enterprise = parts[0];
       const site = parts[1];
       const machine = parts[parts.length - 3]; // Machine is 3 levels up from StateReason
@@ -304,17 +304,32 @@ mqttClient.on('message', async (topic, message) => {
           }
         });
         console.log(`[STATE-REASON] ${equipmentKey}: ${payload}`);
+      } else {
+        // Create entry if state hasn't been seen yet
+        const stateData = {
+          enterprise,
+          site,
+          machine,
+          state: null,
+          stateName: 'UNKNOWN',
+          color: '#888888',
+          reason: String(payload),
+          lastUpdate: timestamp,
+          firstSeen: timestamp
+        };
+        equipmentStateCache.states.set(equipmentKey, stateData);
+        console.log(`[STATE-REASON] ${equipmentKey}: ${payload} (new entry)`);
       }
     }
   }
   // Handle state current topics
-  else if (topicLower.includes('statecurrent') || (topicLower.includes('state') && !topicLower.includes('statereason'))) {
+  else if (topicLower.includes('statecurrent')) {
     const parts = topic.split('/');
-    if (parts.length >= 3) {
+    // Pattern: Enterprise A/Dallas/Line 1/Area/Machine/State/StateCurrent
+    if (parts.length >= 7) {
       const enterprise = parts[0];
       const site = parts[1];
-      // Machine could be at different positions depending on structure
-      const machine = parts.length >= 4 ? parts[3] : parts[2];
+      const machine = parts[parts.length - 3]; // Machine is 3 levels up from StateCurrent
       const equipmentKey = `${enterprise}/${site}/${machine}`;
 
       // Parse state value - support both numeric (1=DOWN, 2=IDLE, 3=RUNNING) and string values
@@ -370,6 +385,51 @@ mqttClient.on('message', async (topic, message) => {
           });
 
           console.log(`[STATE] ${equipmentKey}: ${stateInfo.name}`);
+        }
+      }
+    }
+  }
+  // Handle simple state topics (e.g., Enterprise A/Dallas/Line 1/OEE/State Running)
+  else if (topicLower.includes('/state') && !topicLower.includes('statereason') && !topicLower.includes('statecurrent')) {
+    const parts = topic.split('/');
+    if (parts.length >= 4) {
+      const enterprise = parts[0];
+      const site = parts[1];
+      const machine = parts[parts.length - 2]; // Machine is right before "State"
+      const equipmentKey = `${enterprise}/${site}/${machine}`;
+
+      let stateValue = null;
+      let stateInfo = null;
+      const payloadLower = String(payload).toLowerCase();
+      
+      if (payloadLower.includes('down') || payloadLower.includes('stop') || payloadLower.includes('fault')) {
+        stateValue = 1;
+        stateInfo = equipmentStateCache.STATE_CODES[1];
+      } else if (payloadLower.includes('idle') || payloadLower.includes('standby')) {
+        stateValue = 2;
+        stateInfo = equipmentStateCache.STATE_CODES[2];
+      } else if (payloadLower.includes('run') || payloadLower.includes('active')) {
+        stateValue = 3;
+        stateInfo = equipmentStateCache.STATE_CODES[3];
+      }
+
+      if (stateValue && stateInfo) {
+        const existingState = equipmentStateCache.states.get(equipmentKey);
+        if (!existingState || existingState.state !== stateValue) {
+          const stateData = {
+            enterprise, site, machine,
+            state: stateValue,
+            stateName: stateInfo.name,
+            color: stateInfo.color,
+            reason: existingState?.reason || null,
+            lastUpdate: timestamp,
+            firstSeen: existingState ? existingState.firstSeen : timestamp
+          };
+          equipmentStateCache.states.set(equipmentKey, stateData);
+          broadcastToClients({
+            type: 'equipment_state',
+            data: { ...stateData, durationMs: Date.now() - new Date(stateData.firstSeen).getTime() }
+          });
         }
       }
     }
