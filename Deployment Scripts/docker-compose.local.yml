@@ -91,10 +91,9 @@ services:
     restart: unless-stopped
 
   agentcore-gateway:
-    build:
-      context: /Users/anderbs/dev/github/awslabs/mcp/src/openapi-mcp-server
-      dockerfile: Dockerfile
+    image: python:3.11-slim
     container_name: edgemind-agentcore-gateway
+    entrypoint: ["/bin/sh", "-c", "apt-get update -qq && apt-get install -qq -y git && pip install -q uv && uvx --from 'git+https://github.com/briananderson1222/awslabs-mcp.git#subdirectory=src/openapi-mcp-server' awslabs.openapi-mcp-server --transport http --host 0.0.0.0 --port 8000"]
     ports:
       - "8001:8000"
     environment:
