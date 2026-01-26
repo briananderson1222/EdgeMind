@@ -278,160 +278,103 @@ mqttClient.on('message', async (topic, message) => {
   // Detect and cache equipment state changes
   const topicLower = topic.toLowerCase();
   
-  // Handle StateReason topics (Enterprise A: .../State/StateReason)
+  // =============================================================================
+  // EQUIPMENT STATE HANDLING - Normalized output regardless of source
+  // Output schema: { enterprise, site, machine, status, statusCode, reason, reasonCode }
+  // status: "running" | "idle" | "down" | "unknown"
+  // =============================================================================
+  
+  const updateEquipmentState = (equipmentKey, updates) => {
+    const existing = equipmentStateCache.states.get(equipmentKey) || {};
+    const [enterprise, site, machine] = equipmentKey.split('/');
+    
+    const stateData = {
+      enterprise,
+      site, 
+      machine,
+      status: updates.status || existing.status || 'unknown',
+      statusCode: updates.statusCode ?? existing.statusCode ?? null,
+      reason: updates.reason || existing.reason || null,
+      reasonCode: updates.reasonCode || existing.reasonCode || null,
+      // Legacy fields for backward compatibility
+      state: updates.statusCode ?? existing.statusCode ?? null,
+      stateName: (updates.status || existing.status || 'unknown').toUpperCase(),
+      color: { running: '#28a745', idle: '#ffc107', down: '#dc3545', unknown: '#888888' }[updates.status || existing.status || 'unknown'],
+      lastUpdate: timestamp,
+      firstSeen: existing.firstSeen || timestamp
+    };
+    
+    const statusChanged = existing.status !== stateData.status;
+    equipmentStateCache.states.set(equipmentKey, stateData);
+    
+    if (statusChanged || updates.reason) {
+      broadcastToClients({
+        type: 'equipment_state',
+        data: {
+          id: equipmentKey,
+          ...stateData,
+          durationMs: Date.now() - new Date(stateData.firstSeen).getTime(),
+          durationFormatted: formatDuration(Date.now() - new Date(stateData.firstSeen).getTime())
+        }
+      });
+      if (statusChanged) console.log(`[STATE] ${equipmentKey}: ${stateData.status.toUpperCase()}`);
+    }
+  };
+
+  const normalizeStatus = (value) => {
+    const v = String(value).toLowerCase();
+    if (['1', 'down', 'stop', 'fault', 'error'].some(s => v.includes(s))) return { status: 'down', statusCode: 1 };
+    if (['2', 'idle', 'standby', 'wait', 'planned'].some(s => v.includes(s))) return { status: 'idle', statusCode: 2 };
+    if (['3', '0', 'run', 'active', 'operating'].some(s => v === s || v.includes(s))) return { status: 'running', statusCode: 3 };
+    if (['cip', 'mix', 'fill'].some(s => v.includes(s))) return { status: 'running', statusCode: 3 }; // Process states = running
+    return { status: 'unknown', statusCode: null };
+  };
+
+  // Enterprise A: .../State/StateReason (e.g., RUN-NRM)
   if (topicLower.includes('statereason')) {
     const parts = topic.split('/');
-    // Pattern: Enterprise A/Dallas/Line 1/Area/Machine/State/StateReason
     if (parts.length >= 7) {
-      const enterprise = parts[0];
-      const site = parts[1];
-      const machine = parts[parts.length - 3]; // Machine is 3 levels up from StateReason
-      const equipmentKey = `${enterprise}/${site}/${machine}`;
-      
-      const existingState = equipmentStateCache.states.get(equipmentKey);
-      if (existingState) {
-        existingState.reason = String(payload);
-        existingState.lastUpdate = timestamp;
-        equipmentStateCache.states.set(equipmentKey, existingState);
-        
-        // Broadcast reason update
-        broadcastToClients({
-          type: 'equipment_state',
-          data: {
-            ...existingState,
-            durationMs: Date.now() - new Date(existingState.firstSeen).getTime(),
-            durationFormatted: formatDuration(Date.now() - new Date(existingState.firstSeen).getTime())
-          }
-        });
-        console.log(`[STATE-REASON] ${equipmentKey}: ${payload}`);
-      } else {
-        // Create entry if state hasn't been seen yet
-        const stateData = {
-          enterprise,
-          site,
-          machine,
-          state: null,
-          stateName: 'UNKNOWN',
-          color: '#888888',
-          reason: String(payload),
-          lastUpdate: timestamp,
-          firstSeen: timestamp
-        };
-        equipmentStateCache.states.set(equipmentKey, stateData);
-        console.log(`[STATE-REASON] ${equipmentKey}: ${payload} (new entry)`);
-      }
+      const equipmentKey = `${parts[0]}/${parts[1]}/${parts[parts.length - 3]}`;
+      const reasonCode = String(payload);
+      // Parse reason code: RUN-NRM -> status=running, reason=Normal
+      const reasonParts = reasonCode.split('-');
+      const statusFromReason = normalizeStatus(reasonParts[0]);
+      updateEquipmentState(equipmentKey, { 
+        ...statusFromReason,
+        reasonCode,
+        reason: reasonParts[1] || reasonCode
+      });
     }
   }
-  // Handle state current topics
+  // Enterprise A: .../State/StateCurrent (numeric: 1=DOWN, 2=IDLE, 3=RUNNING)
   else if (topicLower.includes('statecurrent')) {
     const parts = topic.split('/');
-    // Pattern: Enterprise A/Dallas/Line 1/Area/Machine/State/StateCurrent
     if (parts.length >= 7) {
-      const enterprise = parts[0];
-      const site = parts[1];
-      const machine = parts[parts.length - 3]; // Machine is 3 levels up from StateCurrent
-      const equipmentKey = `${enterprise}/${site}/${machine}`;
-
-      // Parse state value - support both numeric (1=DOWN, 2=IDLE, 3=RUNNING) and string values
-      let stateValue = null;
-      let stateInfo = null;
-
-      const numValue = parseInt(payload);
-      if (!isNaN(numValue) && equipmentStateCache.STATE_CODES[numValue]) {
-        stateValue = numValue;
-        stateInfo = equipmentStateCache.STATE_CODES[numValue];
-      } else {
-        // Check for string state values
-        const payloadLower = String(payload).toLowerCase();
-        if (payloadLower.includes('down') || payloadLower.includes('stop') || payloadLower.includes('fault') || payloadLower === '1') {
-          stateValue = 1;
-          stateInfo = equipmentStateCache.STATE_CODES[1];
-        } else if (payloadLower.includes('idle') || payloadLower.includes('standby') || payloadLower.includes('wait') || payloadLower === '2') {
-          stateValue = 2;
-          stateInfo = equipmentStateCache.STATE_CODES[2];
-        } else if (payloadLower.includes('run') || payloadLower.includes('active') || payloadLower.includes('operating') || payloadLower === '3') {
-          stateValue = 3;
-          stateInfo = equipmentStateCache.STATE_CODES[3];
-        }
-      }
-
-      if (stateValue && stateInfo) {
-        const existingState = equipmentStateCache.states.get(equipmentKey);
-
-        // Only update if state changed or first time seen
-        if (!existingState || existingState.state !== stateValue) {
-          const stateData = {
-            enterprise,
-            site,
-            machine,
-            state: stateValue,
-            stateName: stateInfo.name,
-            color: stateInfo.color,
-            reason: existingState?.reason || null,
-            lastUpdate: timestamp,
-            firstSeen: existingState ? existingState.firstSeen : timestamp
-          };
-
-          equipmentStateCache.states.set(equipmentKey, stateData);
-
-          // Broadcast state change to WebSocket clients
-          broadcastToClients({
-            type: 'equipment_state',
-            data: {
-              ...stateData,
-              durationMs: Date.now() - new Date(stateData.firstSeen).getTime(),
-              durationFormatted: formatDuration(Date.now() - new Date(stateData.firstSeen).getTime())
-            }
-          });
-
-          console.log(`[STATE] ${equipmentKey}: ${stateInfo.name}`);
-        }
+      const equipmentKey = `${parts[0]}/${parts[1]}/${parts[parts.length - 3]}`;
+      updateEquipmentState(equipmentKey, normalizeStatus(payload));
+    }
+  }
+  // Enterprise B: .../processdata/state/name or state/code
+  else if (topicLower.includes('processdata/state/')) {
+    const parts = topic.split('/');
+    if (parts.length >= 6) {
+      const equipmentKey = `${parts[0]}/${parts[1]}/${parts[4]}`; // Enterprise/Site/Machine
+      const field = parts[parts.length - 1]; // name, code, type, duration
+      
+      if (field === 'name' || field === 'type') {
+        const normalized = normalizeStatus(payload);
+        updateEquipmentState(equipmentKey, { ...normalized, reason: String(payload) });
+      } else if (field === 'code') {
+        updateEquipmentState(equipmentKey, { reasonCode: String(payload) });
       }
     }
   }
-  // Handle simple state topics (e.g., Enterprise A/Dallas/Line 1/OEE/State Running)
-  else if (topicLower.includes('/state') && !topicLower.includes('statereason') && !topicLower.includes('statecurrent')) {
+  // Simple state topics (e.g., Enterprise A/Dallas/Line 1/OEE/State Running)
+  else if (topicLower.includes('/state') && !topicLower.includes('statereason') && !topicLower.includes('statecurrent') && !topicLower.includes('processdata')) {
     const parts = topic.split('/');
     if (parts.length >= 4) {
-      const enterprise = parts[0];
-      const site = parts[1];
-      const machine = parts[parts.length - 2]; // Machine is right before "State"
-      const equipmentKey = `${enterprise}/${site}/${machine}`;
-
-      let stateValue = null;
-      let stateInfo = null;
-      const payloadLower = String(payload).toLowerCase();
-      
-      if (payloadLower.includes('down') || payloadLower.includes('stop') || payloadLower.includes('fault')) {
-        stateValue = 1;
-        stateInfo = equipmentStateCache.STATE_CODES[1];
-      } else if (payloadLower.includes('idle') || payloadLower.includes('standby')) {
-        stateValue = 2;
-        stateInfo = equipmentStateCache.STATE_CODES[2];
-      } else if (payloadLower.includes('run') || payloadLower.includes('active')) {
-        stateValue = 3;
-        stateInfo = equipmentStateCache.STATE_CODES[3];
-      }
-
-      if (stateValue && stateInfo) {
-        const existingState = equipmentStateCache.states.get(equipmentKey);
-        if (!existingState || existingState.state !== stateValue) {
-          const stateData = {
-            enterprise, site, machine,
-            state: stateValue,
-            stateName: stateInfo.name,
-            color: stateInfo.color,
-            reason: existingState?.reason || null,
-            lastUpdate: timestamp,
-            firstSeen: existingState ? existingState.firstSeen : timestamp
-          };
-          equipmentStateCache.states.set(equipmentKey, stateData);
-          broadcastToClients({
-            type: 'equipment_state',
-            data: { ...stateData, durationMs: Date.now() - new Date(stateData.firstSeen).getTime() }
-          });
-        }
-      }
+      const equipmentKey = `${parts[0]}/${parts[1]}/${parts[parts.length - 2]}`;
+      updateEquipmentState(equipmentKey, normalizeStatus(payload));
     }
   }
 
@@ -956,19 +899,24 @@ app.get('/api/equipment/states', async (req, res) => {
         enterprise: stateData.enterprise,
         site: stateData.site,
         machine: stateData.machine,
+        // Normalized fields
+        status: stateData.status || stateData.stateName?.toLowerCase() || 'unknown',
+        statusCode: stateData.statusCode ?? stateData.state,
+        reason: stateData.reason,
+        reasonCode: stateData.reasonCode || null,
+        // Legacy fields
         state: stateData.state,
         stateName: stateData.stateName,
         color: stateData.color,
-        reason: stateData.reason,
         durationMs,
         durationFormatted: formatDuration(durationMs),
         lastUpdate: stateData.lastUpdate
       });
 
       // Update summary counts
-      const stateName = stateData.stateName.toLowerCase();
-      if (summary.hasOwnProperty(stateName)) {
-        summary[stateName]++;
+      const status = (stateData.status || stateData.stateName || 'unknown').toLowerCase();
+      if (summary.hasOwnProperty(status)) {
+        summary[status]++;
       } else {
         summary.unknown++;
       }
