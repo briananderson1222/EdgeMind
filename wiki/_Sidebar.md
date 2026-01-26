@@ -29,10 +29,12 @@
   * [[Module-Schema]]
   * [[Module-OEE]]
   * [[Module-AI]]
+  * [[Module-AI-Tools]]
 * _Integrations_
   * [[Module-Sparkplug]]
   * [[Module-CMMS]]
   * [[Module-Vector]]
+  * [[Module-AgentCore]]
 
 **API Reference**
 * [[REST-Endpoints]]

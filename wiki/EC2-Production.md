@@ -262,6 +262,57 @@ ssh -i $SSH_KEY $EC2_HOST "sudo docker stop edgemind-backend"
 ssh -i $SSH_KEY $EC2_HOST "sudo docker start edgemind-backend"
 ```
 
+## ChromaDB (Vector Store)
+
+ChromaDB runs as a separate container for anomaly persistence and RAG capabilities.
+
+### Configuration
+
+| Property | Value |
+|----------|-------|
+| **Container Name** | `chromadb` |
+| **Network** | `edgemind-net` |
+| **Port** | `8000` |
+| **Volume** | `chromadb-data:/data` |
+| **Backend Env** | `CHROMA_HOST=chromadb` |
+| **Health Endpoint** | `GET /api/v2/heartbeat` |
+
+### Check ChromaDB Status
+
+```bash
+ssh -i $SSH_KEY $EC2_HOST "docker ps | grep chromadb"
+```
+
+### Check ChromaDB Health
+
+```bash
+ssh -i $SSH_KEY $EC2_HOST "curl -s http://localhost:8000/api/v2/heartbeat"
+```
+
+### View ChromaDB Logs
+
+```bash
+ssh -i $SSH_KEY $EC2_HOST "docker logs chromadb --tail=20"
+```
+
+### Redeploy ChromaDB (with Persistence)
+
+```bash
+ssh -i $SSH_KEY $EC2_HOST "sudo docker stop chromadb && sudo docker rm chromadb && sudo docker run -d --name chromadb --network edgemind-net -p 8000:8000 -v chromadb-data:/data --restart unless-stopped chromadb/chroma"
+```
+
+This command:
+1. Stops and removes the existing container
+2. Creates a new container with persistent volume
+3. Connects to `edgemind-net` for backend communication
+4. Sets `--restart unless-stopped` for automatic recovery
+
+### Verify ChromaDB Connection from Backend
+
+```bash
+ssh -i $SSH_KEY $EC2_HOST "sudo docker exec edgemind-backend curl -s http://chromadb:8000/api/v2/heartbeat"
+```
+
 ## Monitoring Production
 
 ### Health Check

@@ -78,7 +78,65 @@ sequenceDiagram
 - Query window: 5 minutes
 - Aggregation: 1-minute buckets
 
-## 3. User Question Flow
+## 3. Tool-Use Analysis Flow
+
+When Claude detects concerning metrics, it can use tools to investigate root causes. This flow shows the iterative tool_use pattern in the agentic loop.
+
+```mermaid
+sequenceDiagram
+    participant Timer as Agentic Loop
+    participant AI as ai/index.js
+    participant InfluxDB as InfluxDB
+    participant Claude as Claude AI (Bedrock)
+    participant Tools as ai/tools.js
+    participant OEE as oee/index.js
+
+    Timer->>AI: runTrendAnalysis()
+    AI->>InfluxDB: Query 5-min rolling window
+    InfluxDB-->>AI: Trend data
+
+    AI->>AI: Build context + domain knowledge
+    AI->>Claude: Analyze trends (with tool definitions)
+
+    loop Max 3 iterations
+        Claude-->>AI: tool_use request (e.g., get_oee_breakdown)
+        AI->>Tools: executeTool(name, input)
+
+        alt get_oee_breakdown
+            Tools->>OEE: calculateOEEv2(enterprise, site)
+            OEE->>InfluxDB: Query OEE components
+            InfluxDB-->>OEE: A, P, Q values
+            OEE-->>Tools: OEE breakdown result
+        else get_equipment_states
+            Tools->>Tools: Read from equipmentStateCache
+            Tools-->>Tools: Filter by enterprise
+        else get_downtime_analysis
+            Tools->>InfluxDB: Query downtime metrics (24h)
+            InfluxDB-->>Tools: timedownunplanned, timeidle, countdefect
+        end
+
+        Tools-->>AI: Tool result JSON
+        AI->>Claude: tool_result message
+    end
+
+    Claude-->>AI: Final analysis JSON
+    AI->>AI: Parse response, extract insights
+```
+
+**Available Tools:**
+
+| Tool | Purpose | Data Source |
+|------|---------|-------------|
+| `get_oee_breakdown` | Availability, Performance, Quality components | InfluxDB (OEE calculation) |
+| `get_equipment_states` | Current DOWN/IDLE/RUNNING states | In-memory cache |
+| `get_downtime_analysis` | 24h downtime and defect aggregates | InfluxDB |
+
+**Constraints:**
+- Maximum 3 tool calls per analysis (30-second budget)
+- Each Bedrock API call has 12-second timeout
+- Each InfluxDB query has 8-second timeout
+
+## 4. User Question Flow
 
 When a user asks Claude a question through the dashboard.
 
@@ -110,7 +168,55 @@ sequenceDiagram
     DASH->>User: Display AI response
 ```
 
-## 4. OEE Calculation Flow
+## 5. AgentCore Question Flow
+
+When a user question is routed to AWS Bedrock Agents orchestrator for complex multi-turn queries.
+
+```mermaid
+sequenceDiagram
+    participant User as Dashboard User
+    participant DASH as Dashboard (app.js)
+    participant WS as WebSocket Server
+    participant Server as server.js
+    participant AC as agentcore/index.js
+    participant Client as BedrockAgentRuntimeClient
+    participant Agent as AWS Bedrock Agent
+
+    User->>DASH: Type complex question
+    DASH->>WS: ask_agent { question, sessionId? }
+    WS->>Server: Route to AgentCore handler
+
+    Server->>AC: ask(question, sessionId)
+    AC->>AC: Generate sessionId if not provided
+
+    AC->>Client: InvokeAgentCommand
+    Client->>Agent: Send question to orchestrator
+
+    loop Streaming response
+        Agent-->>Client: chunk.bytes (partial response)
+        Client-->>AC: Decode chunk
+        AC->>AC: Concatenate to answer
+    end
+
+    Agent-->>Client: Stream complete
+    AC-->>Server: { answer, sessionId }
+
+    Server->>WS: Send response to client
+    WS->>DASH: JSON { answer, sessionId }
+    DASH->>User: Display agent response
+```
+
+**Key Characteristics:**
+- Streaming response (chunked delivery)
+- Session continuity via sessionId (UUID)
+- 1000 character question limit
+- Handles specific error types: ResourceNotFoundException, ThrottlingException, ValidationException
+
+**Session Management:**
+- New session: Random UUID generated if sessionId not provided
+- Continued session: Pass sessionId from previous response for multi-turn conversations
+
+## 6. OEE Calculation Flow
 
 OEE queries use a tier-based strategy to adapt to available data.
 
@@ -157,7 +263,7 @@ sequenceDiagram
 - Measurements used
 - Calculation method
 
-## 5. Schema Discovery Flow
+## 7. Schema Discovery Flow
 
 Dynamic schema discovery builds a cache of all measurements and hierarchy.
 
@@ -191,7 +297,7 @@ sequenceDiagram
     Routes-->>Client: Response
 ```
 
-## 6. WebSocket Connection Lifecycle
+## 8. WebSocket Connection Lifecycle
 
 ```mermaid
 sequenceDiagram
@@ -259,6 +365,35 @@ sequenceDiagram
     | Dashboard |      | Claude AI   |
     | (browser) |      | (Bedrock)   |
     +----------+      +-------------+
+```
+
+## Tool-Use Summary
+
+```
++------------------+
+|  Agentic Loop    |
+|  (every 30s)     |
++--------+---------+
+         |
+         v
++------------------+     +------------------+
+| Build Context    |---->| Claude Bedrock   |
+| (trends, domain) |     | (tool_use API)   |
++------------------+     +--------+---------+
+                                  |
+                    +-------------+-------------+
+                    |             |             |
+                    v             v             v
+            +-----------+  +-----------+  +-----------+
+            | get_oee   |  | get_equip |  | get_down  |
+            | breakdown |  | states    |  | analysis  |
+            +-----+-----+  +-----+-----+  +-----+-----+
+                  |              |              |
+                  v              v              v
+            +-----------+  +-----------+  +-----------+
+            | InfluxDB  |  | Memory    |  | InfluxDB  |
+            | (OEE)     |  | Cache     |  | (24h)     |
+            +-----------+  +-----------+  +-----------+
 ```
 
 ---

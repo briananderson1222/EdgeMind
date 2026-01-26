@@ -5,24 +5,24 @@ Container-based deployment for EdgeMind using Docker and Docker Compose.
 ## Architecture Overview
 
 ```
-                    Docker Host
-+--------------------------------------------------+
-|                                                  |
-|   +----------------+      +------------------+   |
-|   |   influxdb     |      | edgemind-backend |   |
-|   |   Port: 8086   |<---->|   Port: 3000     |   |
-|   |   (internal)   |      |                  |   |
-|   +----------------+      +------------------+   |
-|         |                        |               |
-|         v                        v               |
-|   influxdb-data            ~/.aws (ro mount)     |
-|   (named volume)                                 |
-|                                                  |
-+--------------------------------------------------+
-         |                        |
-         v                        v
-    localhost:8086          localhost:3000
-    (InfluxDB UI)           (Dashboard)
+                         Docker Host (edgemind-net)
++---------------------------------------------------------------------+
+|                                                                     |
+|   +----------------+    +------------------+    +----------------+  |
+|   |   influxdb     |    | edgemind-backend |    |   chromadb     |  |
+|   |   Port: 8086   |<-->|   Port: 3000     |<-->|   Port: 8000   |  |
+|   |   (internal)   |    |                  |    |   (internal)   |  |
+|   +----------------+    +------------------+    +----------------+  |
+|         |                      |                       |            |
+|         v                      v                       v            |
+|   influxdb-data          ~/.aws (ro mount)       chromadb-data     |
+|   (named volume)                                 (named volume)     |
+|                                                                     |
++---------------------------------------------------------------------+
+         |                       |                       |
+         v                       v                       v
+    localhost:8086         localhost:3000          localhost:8000
+    (InfluxDB UI)          (Dashboard)             (ChromaDB API)
 ```
 
 ## Docker Compose Files
@@ -278,6 +278,77 @@ docker run -d --name edgemind-backend -p 3000:3000 \
   edgemind:latest
 ```
 
+## ChromaDB
+
+ChromaDB provides vector storage for anomaly persistence and RAG (Retrieval-Augmented Generation) capabilities.
+
+### Container Setup
+
+```bash
+docker run -d --name chromadb \
+  --network edgemind-net \
+  -p 8000:8000 \
+  -v chromadb-data:/data \
+  --restart unless-stopped \
+  chromadb/chroma
+```
+
+### Environment Variables
+
+Configure the backend to connect to ChromaDB:
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `CHROMA_HOST` | `chromadb` | Hostname when on same Docker network |
+| `CHROMA_PORT` | `8000` | ChromaDB API port |
+
+Add to your `.env` file:
+
+```bash
+CHROMA_HOST=chromadb
+CHROMA_PORT=8000
+```
+
+### Health Check
+
+Verify ChromaDB is running:
+
+```bash
+curl http://localhost:8000/api/v2/heartbeat
+```
+
+Expected response: `{"nanosecond heartbeat": <timestamp>}`
+
+### Network Requirements
+
+ChromaDB must be on the same Docker network as the backend container:
+
+```bash
+# Create the network if it doesn't exist
+docker network create edgemind-net
+
+# Verify containers are on the network
+docker network inspect edgemind-net
+```
+
+All containers (`edgemind-backend`, `influxdb`, `chromadb`) should be connected to `edgemind-net` for inter-container communication.
+
+### Troubleshooting ChromaDB
+
+```bash
+# Check container status
+docker ps | grep chromadb
+
+# View logs
+docker logs chromadb --tail=50
+
+# Test connectivity from backend
+docker exec edgemind-backend curl http://chromadb:8000/api/v2/heartbeat
+
+# Restart ChromaDB
+docker restart chromadb
+```
+
 ## Volume Mounts
 
 ### Named Volumes
@@ -285,6 +356,7 @@ docker run -d --name edgemind-backend -p 3000:3000 \
 | Volume | Container Path | Purpose |
 |--------|---------------|---------|
 | `influxdb-data` | `/var/lib/influxdb2` | InfluxDB data persistence |
+| `chromadb-data` | `/data` | ChromaDB vector storage persistence |
 
 ### Bind Mounts (Local Dev)
 

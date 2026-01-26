@@ -629,6 +629,361 @@ curl http://localhost:3000/api/waste/by-line
 
 ---
 
+### GET /api/waste/breakdown
+
+Returns total waste aggregated by enterprise over 24h.
+
+**Response:**
+
+```json
+{
+  "breakdown": [
+    {
+      "enterprise": "Enterprise A",
+      "total": 245.50
+    },
+    {
+      "enterprise": "Enterprise B",
+      "total": 178.25
+    }
+  ],
+  "timestamp": "2025-01-13T14:30:00.000Z"
+}
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `breakdown` | array | Enterprise waste totals, sorted descending by total |
+| `breakdown[].enterprise` | string | Enterprise name |
+| `breakdown[].total` | number | Total waste count (2 decimal places) |
+| `timestamp` | string | ISO timestamp of query |
+
+**Waste Measurements Included:**
+- `OEE_Waste`
+- `Production_DefectCHK`
+- `Production_DefectDIM`
+- `Production_DefectSED`
+- `Production_RejectCount`
+- `count_defect`
+- `input_countdefect`
+- `workorder_quantitydefect`
+
+**Example:**
+
+```bash
+curl http://localhost:3000/api/waste/breakdown
+```
+
+---
+
+## Batch Process (Enterprise C)
+
+### GET /api/batch/health
+
+Returns batch process health status for Enterprise C. Enterprise C uses ISA-88 batch control, which differs from continuous OEE-based monitoring.
+
+**Response:**
+
+```json
+{
+  "enterprise": "Enterprise C",
+  "batches": [],
+  "message": "Enterprise C uses ISA-88 batch control (not yet fully implemented)",
+  "timestamp": "2025-01-13T14:30:00.000Z"
+}
+```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enterprise` | string | Always "Enterprise C" |
+| `batches` | array | Active batch processes (currently empty - placeholder) |
+| `message` | string | Implementation status note |
+| `timestamp` | string | ISO timestamp |
+
+**Note:** This endpoint returns placeholder data. Full ISA-88 batch tracking is planned for future implementation.
+
+**Example:**
+
+```bash
+curl http://localhost:3000/api/batch/health
+```
+
+---
+
+## Data Query
+
+### POST /api/influx/query
+
+Direct InfluxDB query endpoint. Execute custom Flux queries against the factory time-series database.
+
+**Security Considerations:**
+
+| Risk | Mitigation |
+|------|------------|
+| Query injection | Only Flux queries accepted (not SQL) |
+| Destructive operations | DELETE and DROP commands are blocked (403) |
+| Resource exhaustion | Query length limited to 5000 characters |
+| Data exfiltration | No authentication currently - restrict network access in production |
+
+**Request Body:**
+
+```json
+{
+  "query": "from(bucket: \"factory\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \"OEE_Performance\") |> mean()"
+}
+```
+
+**Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `query` | string | Yes | Flux query string (max 5000 characters) |
+
+**Response (success):**
+
+```json
+{
+  "results": [
+    {
+      "_time": "2025-01-13T14:00:00.000Z",
+      "_value": 82.5,
+      "_measurement": "OEE_Performance",
+      "enterprise": "Enterprise A",
+      "site": "Dallas Line 1"
+    }
+  ],
+  "count": 1,
+  "timestamp": "2025-01-13T14:30:00.000Z"
+}
+```
+
+**Error Responses:**
+
+**400 Bad Request - Missing query:**
+
+```json
+{
+  "error": "Missing or invalid query parameter",
+  "message": "Query must be a non-empty Flux query string"
+}
+```
+
+**400 Bad Request - Query too long:**
+
+```json
+{
+  "error": "Query too long",
+  "message": "Query must be less than 5000 characters"
+}
+```
+
+**403 Forbidden - Destructive operation:**
+
+```json
+{
+  "error": "Forbidden query",
+  "message": "DELETE and DROP operations are not allowed"
+}
+```
+
+**500 Internal Server Error:**
+
+```json
+{
+  "error": "Failed to execute query",
+  "message": "connection timeout"
+}
+```
+
+**Example:**
+
+```bash
+# Get average OEE for last hour
+curl -X POST http://localhost:3000/api/influx/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "from(bucket: \"factory\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \"OEE_Performance\") |> mean()"
+  }'
+
+# Get latest temperature readings
+curl -X POST http://localhost:3000/api/influx/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "from(bucket: \"factory\") |> range(start: -5m) |> filter(fn: (r) => r._measurement =~ /temperature/) |> last()"
+  }'
+
+# Count data points by enterprise
+curl -X POST http://localhost:3000/api/influx/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "from(bucket: \"factory\") |> range(start: -24h) |> group(columns: [\"enterprise\"]) |> count()"
+  }'
+```
+
+---
+
+## AgentCore Integration
+
+AWS Bedrock Agent integration for natural language queries about factory data.
+
+### GET /api/agent/health
+
+Check AgentCore connectivity and configuration status.
+
+**Response (enabled and healthy):**
+
+```json
+{
+  "enabled": true,
+  "healthy": true,
+  "agentId": "ABCD1234XY",
+  "aliasId": "ZYXW9876",
+  "region": "us-east-1",
+  "timestamp": "2025-01-13T14:30:00.000Z"
+}
+```
+
+**Response (not configured):**
+
+```json
+{
+  "enabled": false,
+  "healthy": false,
+  "message": "AgentCore not configured"
+}
+```
+
+**Response (configured but unhealthy):**
+
+```json
+{
+  "enabled": true,
+  "healthy": false,
+  "message": "Failed to connect to Bedrock Agent",
+  "timestamp": "2025-01-13T14:30:00.000Z"
+}
+```
+
+**Configuration:**
+
+AgentCore requires these environment variables:
+- `AGENTCORE_AGENT_ID` - Bedrock Agent ID
+- `AGENTCORE_ALIAS_ID` - Bedrock Agent Alias ID
+- AWS credentials (via IAM role or environment)
+
+**Example:**
+
+```bash
+curl http://localhost:3000/api/agent/health
+```
+
+---
+
+### POST /api/agent/ask
+
+Proxy natural language questions to the AWS Bedrock Agent orchestrator. The agent has access to factory context and can answer questions about OEE, equipment status, trends, and anomalies.
+
+**Request Body:**
+
+```json
+{
+  "question": "What is the current OEE for Enterprise A?",
+  "sessionId": "user-session-123"
+}
+```
+
+**Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `question` | string | Yes | Natural language question (max 1000 characters) |
+| `sessionId` | string | No | Session ID for conversation continuity (max 100 characters) |
+
+**Response (success):**
+
+```json
+{
+  "answer": "Enterprise A currently has an OEE of 78.5%. This is calculated using Tier 1 (direct OEE measurement) with high confidence. The breakdown shows: Availability 92.1%, Performance 88.3%, Quality 96.5%.",
+  "sessionId": "user-session-123",
+  "timestamp": "2025-01-13T14:30:00.000Z"
+}
+```
+
+**Error Responses:**
+
+**400 Bad Request - Missing question:**
+
+```json
+{
+  "error": "Missing or invalid question parameter",
+  "message": "Question must be a non-empty string"
+}
+```
+
+**400 Bad Request - Question too long:**
+
+```json
+{
+  "error": "Question too long",
+  "message": "Question must be less than 1000 characters"
+}
+```
+
+**400 Bad Request - Invalid sessionId:**
+
+```json
+{
+  "error": "Invalid sessionId parameter",
+  "message": "sessionId must be a string less than 100 characters"
+}
+```
+
+**503 Service Unavailable - AgentCore not configured:**
+
+```json
+{
+  "error": "AgentCore is not configured",
+  "message": "Set AGENTCORE_AGENT_ID and AGENTCORE_ALIAS_ID environment variables"
+}
+```
+
+**500 Internal Server Error:**
+
+```json
+{
+  "error": "Failed to process question",
+  "message": "Bedrock invocation failed"
+}
+```
+
+**Example:**
+
+```bash
+# Simple question
+curl -X POST http://localhost:3000/api/agent/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the current OEE for Enterprise A?"}'
+
+# With session ID for conversation continuity
+curl -X POST http://localhost:3000/api/agent/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "How does that compare to yesterday?",
+    "sessionId": "user-session-123"
+  }'
+
+# Ask about anomalies
+curl -X POST http://localhost:3000/api/agent/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Are there any active anomalies in the factory?"}'
+```
+
+---
+
 ## Settings
 
 ### GET /api/settings
@@ -922,6 +1277,15 @@ All endpoints return consistent error format:
 }
 ```
 
+**403 Forbidden:**
+
+```json
+{
+  "error": "Forbidden query",
+  "message": "DELETE and DROP operations are not allowed"
+}
+```
+
 **500 Internal Server Error:**
 
 ```json
@@ -952,3 +1316,5 @@ Recommended polling intervals:
 - `/api/schema/*` - 5 minutes (cached)
 - `/api/oee/*` - 30 seconds
 - `/api/agent/context` - 30 seconds
+- `/api/agent/ask` - On-demand (user-initiated)
+- `/api/influx/query` - On-demand (limit to avoid overload)

@@ -86,7 +86,9 @@ flowchart LR
 | Backend | Node.js + Express |
 | Message Broker | MQTT (Mosquitto-compatible) |
 | Time-Series DB | InfluxDB 2.7 |
+| Vector DB | ChromaDB (anomaly persistence, RAG) |
 | AI/ML | AWS Bedrock (Claude Sonnet) |
+| AI Agents | AWS Bedrock Agents (AgentCore) |
 | Real-Time | WebSocket |
 | Frontend | HTML/CSS/JavaScript |
 
@@ -109,6 +111,14 @@ EdgeMind/
 │   ├── schema/            # Schema discovery
 │   ├── oee/               # OEE calculation
 │   ├── ai/                # Claude integration
+│   │   ├── index.js       # Trend analysis, agentic loop
+│   │   └── tools.js       # AI tool definitions
+│   ├── agentcore/         # AWS Bedrock Agents integration
+│   │   └── index.js       # AgentCore client
+│   ├── vector/            # Vector storage (ChromaDB)
+│   │   └── index.js       # Anomaly persistence, RAG
+│   ├── sparkplug/         # Sparkplug B protocol
+│   │   └── decoder.js     # Sparkplug payload decoder
 │   └── cmms-*.js          # CMMS integrations
 └── docs/                  # Documentation
 ```

@@ -32,12 +32,18 @@ flowchart TB
             SCHEMA[schema/index.js<br/>Schema discovery & cache]
             OEE[oee/index.js<br/>OEE calculation engine]
             AI[ai/index.js<br/>Claude integration]
+            AI_TOOLS[ai/tools.js<br/>AI tool definitions]
         end
 
         subgraph integrations[Integration Layer]
             CMMS_I[cmms-interface.js<br/>Generic CMMS interface]
             CMMS_M[cmms-maintainx.js<br/>MaintainX provider]
+            AGENTCORE[agentcore/index.js<br/>AWS Bedrock Agents client]
         end
+    end
+
+    subgraph external[External Services]
+        BEDROCK[AWS Bedrock Agents]
     end
 
     ROUTES --> SCHEMA
@@ -62,8 +68,10 @@ flowchart TB
     DOMAIN --> SCHEMA
     DOMAIN --> AI
 
+    AI --> AI_TOOLS
     CMMS_I --> CMMS_M
     AI -.-> CMMS_I
+    AGENTCORE --> BEDROCK
 ```
 
 ## Module Dependency Graph
@@ -86,11 +94,17 @@ flowchart BT
         SCHEMA[schema/index.js]
         OEE[oee/index.js]
         AI[ai/index.js]
+        AI_TOOLS[ai/tools.js]
     end
 
     subgraph Layer 3 - Integration
         CMMS_I[cmms-interface.js]
         CMMS_M[cmms-maintainx.js]
+        AGENTCORE[agentcore/index.js]
+    end
+
+    subgraph External
+        BEDROCK[AWS Bedrock Agents]
     end
 
     INFLUX_C --> CONFIG
@@ -112,8 +126,10 @@ flowchart BT
     AI --> STATE
     AI --> CONFIG
     AI --> DOMAIN
+    AI --> AI_TOOLS
 
     CMMS_M --> CMMS_I
+    AGENTCORE --> BEDROCK
 ```
 
 ## Module Details
@@ -149,7 +165,8 @@ Output: Measurement: "temperature_actual"
 |--------|---------|--------------|
 | `schema/index.js` | Dynamic schema discovery | influx/client, state, config, validation, domain-context |
 | `oee/index.js` | Tier-based OEE calculation | influx/client, state, schema, config, validation |
-| `ai/index.js` | Claude AI integration | influx/client, state, config, domain-context |
+| `ai/index.js` | Claude AI integration | influx/client, state, config, domain-context, ai/tools |
+| `ai/tools.js` | AI tool definitions | None (exports tool specs) |
 
 **OEE Tier Strategy:**
 ```
@@ -165,6 +182,7 @@ Tier 4: Availability only (degraded)
 |--------|---------|--------------|
 | `cmms-interface.js` | Generic CMMS abstraction | None |
 | `cmms-maintainx.js` | MaintainX implementation | cmms-interface |
+| `agentcore/index.js` | AWS Bedrock Agents client | AWS Bedrock Agents (external) |
 
 ## State Objects
 

@@ -179,10 +179,23 @@ AI-generated trend analysis. Broadcast every 30 seconds when insights are enable
       "OEE performance metrics",
       "Equipment state changes",
       "Temperature readings"
-    ]
+    ],
+    "toolCallsUsed": 2
   }
 }
 ```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `timestamp` | string | ISO timestamp when insight was generated |
+| `summary` | string | Human-readable trend summary |
+| `severity` | string | Severity level (see table below) |
+| `anomalies` | array | Detected anomalies with details |
+| `recommendations` | array | Suggested actions |
+| `factorsAnalyzed` | array | Data categories analyzed |
+| `toolCallsUsed` | number | Count of tool calls Claude made during this analysis cycle (0-3) |
 
 **Severity Levels:**
 

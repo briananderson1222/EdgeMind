@@ -31,13 +31,24 @@ const aiModule = require('./lib/ai');
 const { broadcast } = require('./websocket');
 const cmmsProvider = require('./lib/cmms-maintainx');
 const bedrockClient = new BedrockRuntimeClient({ region: 'us-east-1' });
+const vectorStore = require('./lib/vector-store');
 
 aiModule.init({
   broadcast,           // WebSocket broadcast function
   cmms: cmmsProvider,  // CMMS provider instance
-  bedrockClient        // AWS Bedrock client
+  bedrockClient,       // AWS Bedrock client instance
+  vectorStore          // Vector store instance for RAG
 });
 ```
+
+### Dependencies
+
+| Dependency | Required | Description |
+|------------|----------|-------------|
+| `broadcast` | Yes | WebSocket broadcast function for pushing insights to clients |
+| `cmms` | No | CMMS provider instance for work order creation |
+| `bedrockClient` | Yes | AWS Bedrock client for Claude API calls |
+| `vectorStore` | No | Vector store for historical anomaly RAG queries |
 
 ## Agentic Loop
 
@@ -89,7 +100,7 @@ The main orchestrator for each analysis cycle.
 
 1. Query 5-minute trend data from InfluxDB
 2. Summarize trends for Claude
-3. Send to Claude for analysis
+3. Send to Claude for analysis (with tool_use support)
 4. Store insight in `factoryState.trendInsights`
 5. Broadcast to WebSocket clients
 6. Optionally create CMMS work orders for high-severity anomalies
@@ -102,6 +113,117 @@ const { runTrendAnalysis } = require('./lib/ai');
 await runTrendAnalysis();
 // Logs: "Running trend analysis..."
 // Logs: "Trend Analysis: <summary>"
+```
+
+## Tool-Use: Investigative Insights
+
+Claude can request tools during trend analysis to investigate root causes instead of just restating metrics.
+
+### How It Works
+
+1. Claude receives trend summary and domain context
+2. Claude identifies areas needing investigation (e.g., low OEE)
+3. Claude requests tools to get detailed data
+4. Tool results are sent back to Claude
+5. Claude provides a root-cause analysis
+
+### Available Tools
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `get_oee_breakdown` | Get A/P/Q component breakdown | When OEE is low, find which component is the bottleneck |
+| `get_equipment_states` | Get current DOWN/IDLE/RUNNING states | When availability is low, find which machines are down |
+| `get_downtime_analysis` | Get 24h downtime and defect totals | When quality is low or defects are high |
+
+See [[Module-AI-Tools]] for detailed tool documentation.
+
+### Configuration
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| Max Tool Calls | 3 | Maximum tool calls per analysis cycle |
+| Bedrock Timeout | 12,000ms | Per-call timeout for Bedrock API |
+| Query Timeout | 8,000ms | Per-query timeout for InfluxDB |
+
+### Example Tool Flow
+
+```
+Claude: "Enterprise B OEE is 72%..."
+   |
+   +---> Tool: get_oee_breakdown(enterprise: "Enterprise B")
+   |       Returns: { availability: 82%, performance: 95%, quality: 92% }
+   |
+   +---> Tool: get_equipment_states(enterprise: "Enterprise B")
+   |       Returns: { DOWN: 2, IDLE: 1, RUNNING: 5 }
+   |
+   v
+Claude: "Enterprise B OEE is 72% due to availability (82%).
+         Two machines are currently DOWN: Filler-01 and Labeler-03."
+```
+
+## Bedrock Integration
+
+The AI module uses AWS Bedrock with Claude's tool_use capability.
+
+### API Configuration
+
+```javascript
+const payload = {
+  anthropic_version: 'bedrock-2023-05-31',
+  max_tokens: 2000,
+  tools: TOOL_DEFINITIONS,  // From lib/ai/tools.js
+  messages: [{ role: 'user', content: prompt }]
+};
+
+const command = new InvokeModelCommand({
+  modelId: CONFIG.bedrock.modelId,
+  contentType: 'application/json',
+  accept: 'application/json',
+  body: JSON.stringify(payload)
+});
+```
+
+### Tool Loop Pattern
+
+The module implements a tool_use loop that:
+
+1. Sends initial prompt with tool definitions
+2. Checks response for `tool_use` blocks
+3. Executes requested tools via `executeTool()`
+4. Sends results back as `tool_result` messages
+5. Repeats until Claude returns final text response or limit reached
+
+```javascript
+while (true) {
+  const response = await bedrockClient.send(command);
+  const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
+
+  if (toolUseBlocks.length === 0) {
+    // Final response - parse JSON and return
+    break;
+  }
+
+  // Execute tools and continue loop
+  for (const block of toolUseBlocks) {
+    const result = await executeTool(block.name, block.input);
+    // Add result to messages
+  }
+}
+```
+
+### Timeout Handling
+
+Each Bedrock API call has a 12-second timeout:
+
+```javascript
+const BEDROCK_TIMEOUT_MS = 12000;
+
+const response = await Promise.race([
+  bedrockClientInstance.send(command),
+  new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Bedrock API timeout')), BEDROCK_TIMEOUT_MS)
+  )
+]);
 ```
 
 ## Function: queryTrends
@@ -166,7 +288,7 @@ Builds enterprise-specific context for Claude using domain knowledge.
 **Enterprise A (Glass Manufacturing)**
 - Critical Metrics: temperature, gob_weight, defect_count
 - Key Concerns: thermal_shock, crown_temperature, refractory_wear
-- Safe Ranges: furnace_temp: 2600-2800 °F (CRITICAL)
+- Safe Ranges: furnace_temp: 2600-2800 F (CRITICAL)
 - Waste Thresholds: Warning > 10 defects/hr, Critical > 25 defects/hr
 
 **Enterprise B (Beverage Bottling)**
@@ -184,9 +306,12 @@ The prompt includes several sections:
 
 1. **Domain Context** - Enterprise-specific knowledge
 2. **Operator Thresholds** - Business-calibrated alert levels
-3. **Previous Insights** - Deduplication of recent alerts
-4. **Current Trend Data** - The actual metrics
-5. **Anomaly Filter Rules** - User-defined filters
+3. **Data Source Context** - Explains stable metrics are normal
+4. **Previous Insights** - Deduplication of recent alerts
+5. **Historical Context** - RAG results from vector store
+6. **Current Trend Data** - The actual metrics
+7. **Anomaly Filter Rules** - User-defined filters
+8. **Tool Instructions** - How to use investigative tools
 
 ### Threshold Settings
 
@@ -305,8 +430,13 @@ const response = await askClaudeWithContext(
     summary: '...',
     trends: [...],
     anomalies: [...],
+    wasteAlerts: [...],
+    recommendations: [...],
+    enterpriseInsights: {...},
     severity: 'medium',
-    confidence: 0.85
+    confidence: 0.85,
+    dataPoints: 150,
+    toolCallsUsed: 2  // Number of investigative tool calls made
   }
 }
 ```
@@ -338,6 +468,7 @@ const response = await askClaudeWithContext(
 
 ```javascript
 const TREND_ANALYSIS_INTERVAL = 30000; // 30 seconds
+const BEDROCK_TIMEOUT_MS = 12000;      // 12 seconds per API call
 // First analysis after 15 seconds startup delay
 ```
 
@@ -345,16 +476,23 @@ const TREND_ANALYSIS_INTERVAL = 30000; // 30 seconds
 
 | Module | Relationship |
 |--------|--------------|
-| [Module-Influx-Client](Module-Influx-Client) | Provides `queryApi` for trend data |
-| [Module-CMMS](Module-CMMS) | Creates work orders for anomalies |
+| [[Module-Influx-Client]] | Provides `queryApi` for trend data |
+| [[Module-CMMS]] | Creates work orders for anomalies |
+| [[Module-AI-Tools]] | Tool definitions and handlers for investigative insights |
+| [[Module-State]] | Provides `factoryState` and `equipmentStateCache` |
+| [[Module-Config]] | Provides configuration values |
+| [[Module-Domain-Context]] | Provides enterprise domain knowledge |
 
 ## Error Handling
 
 - InfluxDB query errors return empty results (graceful degradation)
 - Bedrock API errors are logged and return null
+- Bedrock timeouts (12s) prevent hanging API calls
 - JSON parse errors return raw text with `parseError: true` flag
+- Tool execution errors are caught and returned as `{ success: false, error: ... }`
 
 ## See Also
 
-- [Module-CMMS](Module-CMMS) - Work order creation
-- [Factory Enterprises Explained](Factory-Enterprises-Explained) - Domain context
+- [[Module-AI-Tools]] - Tool definitions and handlers
+- [[Module-CMMS]] - Work order creation
+- [[Factory-Enterprises-Explained]] - Domain context
