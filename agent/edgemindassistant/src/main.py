@@ -17,21 +17,33 @@ with open(Path(__file__).parent / "prompt.yaml") as f:
     PROMPTS = yaml.safe_load(f)
 
 SYSTEM_PROMPT = PROMPTS["system_prompt"]
-AGENT_PROMPTS = PROMPTS.get("agent_prompts", {})
+AGENT_CONFIGS = PROMPTS.get("agents", {})
 
 @app.entrypoint
 async def invoke(payload, context):
     mcp_client = MCPClient(lambda: streamablehttp_client(EDGEMIND_MCP_SERVER_URL))
     
-    # Select system prompt based on agent_type
+    # Get agent config based on agent_type
     agent_type = payload.get("agent_type", "chat")
-    system_prompt = AGENT_PROMPTS.get(agent_type, SYSTEM_PROMPT)
+    agent_config = AGENT_CONFIGS.get(agent_type, {"prompt": SYSTEM_PROMPT})
+    system_prompt = agent_config.get("prompt", SYSTEM_PROMPT)
+    allowed_tools = agent_config.get("tools")  # None means all tools
     
     with mcp_client:
         mcp_tools = mcp_client.list_tools_sync()
+        
+        # Filter MCP tools if agent specifies allowed tools
+        if allowed_tools:
+            mcp_tools = [t for t in mcp_tools if t.name in allowed_tools]
+        
+        # Add local tools based on agent config
+        local_tools = []
+        if not allowed_tools or "retrieve" in allowed_tools:
+            local_tools.append(retrieve)
+        
         agent = Agent(
             model=load_model(),
-            tools=[*mcp_tools, retrieve],
+            tools=[*mcp_tools, *local_tools],
             system_prompt=system_prompt
         )
 
