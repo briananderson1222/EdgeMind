@@ -1879,10 +1879,12 @@ async function sendChat() {
                 if (line.startsWith('data: ')) {
                     try {
                         const data = JSON.parse(line.slice(6));
-                        text += data;
+                        text += typeof data === 'string' ? data : (data.text || data.content || '');
                     } catch {
                         text += line.slice(6);
                     }
+                } else if (line.trim() && !line.startsWith('event:')) {
+                    text += line;
                 }
             }
             bubbleDiv.innerHTML = parseMarkdown(text);
