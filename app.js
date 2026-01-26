@@ -866,23 +866,11 @@ function closeTroubleshootModal() {
 }
 
 async function queryTroubleshootAgent(equipment) {
-    const prompt = `Equipment "${equipment.machine}" at ${equipment.enterprise}/${equipment.site} is DOWN.
-Status: ${equipment.status || equipment.stateName}
-Reason: ${equipment.reason || 'Unknown'}
-Reason Code: ${equipment.reasonCode || 'N/A'}
-Duration: ${equipment.durationFormatted || 'Unknown'}
-
-Please:
-1. Query the knowledge base for any SOPs or troubleshooting guides related to this equipment or failure reason
-2. Get the last 15 minutes of sensor data history for this machine to identify what led to the failure
-3. Provide likely causes and step-by-step troubleshooting guidance
-4. Recommend immediate actions to restore operation`;
-
-    const response = await fetch('/api/chat', {
+    const response = await fetch('/api/troubleshoot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-            message: prompt,
+            equipment,
             sessionId: `troubleshoot-${equipment.machine}-${Date.now()}`
         })
     });

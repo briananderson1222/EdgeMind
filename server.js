@@ -540,27 +540,29 @@ app.get('/api/trends', async (req, res) => {
 
 // Chat endpoint - proxies to AgentCore agent
 const AGENTCORE_URL = process.env.AGENTCORE_URL || 'http://localhost:8080';
+
+async function invokeAgent(prompt, sessionId, agentType = 'chat') {
+  return fetch(`${AGENTCORE_URL}/invocations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, session_id: sessionId || 'default', agent_type: agentType })
+  });
+}
+
 app.post('/api/chat', express.json(), async (req, res) => {
   const { prompt, sessionId } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
   try {
-    const response = await fetch(`${AGENTCORE_URL}/invocations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, session_id: sessionId || 'default' })
-    });
-
+    const response = await invokeAgent(prompt, sessionId, 'chat');
     if (!response.ok) throw new Error(`Agent error: ${response.status}`);
 
-    // Stream the response
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -569,6 +571,41 @@ app.post('/api/chat', express.json(), async (req, res) => {
     res.end();
   } catch (err) {
     console.error('Chat error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Troubleshoot endpoint - specialized agent for equipment diagnostics
+app.post('/api/troubleshoot', express.json(), async (req, res) => {
+  const { equipment, sessionId } = req.body;
+  if (!equipment) return res.status(400).json({ error: 'equipment required' });
+
+  const prompt = `Equipment "${equipment.machine}" at ${equipment.enterprise}/${equipment.site} is DOWN.
+Status: ${equipment.status || equipment.stateName || 'DOWN'}
+Reason: ${equipment.reason || 'Unknown'}
+Reason Code: ${equipment.reasonCode || 'N/A'}
+Duration: ${equipment.durationFormatted || 'Unknown'}
+
+Diagnose this issue and provide troubleshooting guidance.`;
+
+  try {
+    const response = await invokeAgent(prompt, sessionId, 'troubleshoot');
+    if (!response.ok) throw new Error(`Agent error: ${response.status}`);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(decoder.decode(value, { stream: true }));
+    }
+    res.end();
+  } catch (err) {
+    console.error('Troubleshoot error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
