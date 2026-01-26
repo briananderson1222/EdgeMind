@@ -175,4 +175,36 @@ This file tracks bugs encountered and their solutions for future reference.
   ```
 - **Prevention**: Always use heredoc with `'ENDJSON'` (single-quoted delimiter) and file:// for secrets containing special characters (`!`, `$`, backticks, etc.)
 
+### 2026-01-26 - OEE Line Query Missing Metrics and Wrong Filter (PR #9)
+- **Issue**: `/api/oee/lines` endpoint returned incomplete data - missing A/P/Q components and some lines entirely
+- **Root Cause**: Multiple issues:
+  1. Query only searched `OEE_*` measurements, missing `metric_*` naming convention (Enterprise B uses `metric_availability`, not `OEE_Availability`)
+  2. Value filter `r._value > 0.1` excluded valid low values (0.05 = 5% is valid)
+  3. No pivot - couldn't get OEE + A/P/Q in single query
+  4. Components (availability, performance, quality) returned as `null`
+- **Solution**: Rewrote query in `server.js` `/api/oee/lines`:
+  ```javascript
+  // Query BOTH naming conventions
+  r._measurement == "OEE_Availability" or r._measurement == "metric_availability"
+
+  // Use > 0 not > 0.1
+  |> filter(fn: (r) => r._value > 0 and r._value <= 150)
+
+  // Pivot to get all metrics in one row
+  |> pivot(rowKey: ["enterprise", "site", "area"], columnKey: ["_measurement"], valueColumn: "_value")
+
+  // Normalize with fallback between naming conventions
+  const availability = normalize(o.OEE_Availability ?? o.metric_availability);
+
+  // Calculate OEE from components if not directly available
+  if (oee === null && availability && performance && quality) {
+    oee = (availability/100) * (performance/100) * (quality/100) * 100;
+  }
+  ```
+- **Prevention**:
+  - Always query BOTH `OEE_*` AND `metric_*` naming conventions for OEE-related measurements
+  - Use `> 0` not `> 0.1` for value filters (low percentages are valid)
+  - Use InfluxDB `pivot()` to get related measurements in single query
+  - Commit: `4ff3dbd`
+
 <!-- Add new bugs above this line -->
