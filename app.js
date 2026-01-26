@@ -796,18 +796,120 @@ function updateEquipmentState(data) {
 
 function onEquipmentDown(equipment) {
     const reason = equipment.reason || 'Unknown';
-    showToast(`⚠️ ${equipment.machine || equipment.name} is DOWN: ${reason}`, 'error');
+    showToast(`⚠️ ${equipment.machine || equipment.name} is DOWN: ${reason}`, 'error', equipment);
     
     // Dispatch event for other components
     window.dispatchEvent(new CustomEvent('equipmentDown', { detail: equipment }));
 }
 
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', equipment = null) {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.textContent = message;
+    
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+    toast.appendChild(msgSpan);
+    
+    // Add Troubleshoot button for equipment down events
+    if (equipment && type === 'error') {
+        const btn = document.createElement('button');
+        btn.className = 'toast-action-btn';
+        btn.textContent = 'Troubleshoot';
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            openTroubleshootModal(equipment);
+            toast.remove();
+        };
+        toast.appendChild(btn);
+    }
+    
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 6000);
+    setTimeout(() => toast.remove(), 10000);
+}
+
+// Equipment Troubleshoot Modal
+async function openTroubleshootModal(equipment) {
+    const overlay = document.getElementById('troubleshoot-modal-overlay');
+    const titleEl = document.getElementById('troubleshoot-modal-title');
+    const infoEl = document.getElementById('troubleshoot-equipment-info');
+    const responseEl = document.getElementById('troubleshoot-response');
+    
+    if (!overlay) return;
+    
+    // Set title and equipment info
+    titleEl.textContent = `Troubleshoot: ${equipment.machine}`;
+    infoEl.innerHTML = `
+        <div class="equipment-detail"><strong>Machine:</strong> ${equipment.machine}</div>
+        <div class="equipment-detail"><strong>Location:</strong> ${equipment.enterprise} / ${equipment.site}</div>
+        <div class="equipment-detail"><strong>Status:</strong> <span class="status-badge down">${equipment.status || equipment.stateName}</span></div>
+        <div class="equipment-detail"><strong>Reason:</strong> ${equipment.reason || 'Unknown'}</div>
+        ${equipment.reasonCode ? `<div class="equipment-detail"><strong>Code:</strong> ${equipment.reasonCode}</div>` : ''}
+        <div class="equipment-detail"><strong>Duration:</strong> ${equipment.durationFormatted || 'N/A'}</div>
+    `;
+    
+    // Show loading state
+    responseEl.innerHTML = `<div class="troubleshoot-loading"><div class="loading-spinner"></div><span>Analyzing equipment and querying knowledge base...</span></div>`;
+    overlay.classList.add('active');
+    
+    // Query agent with equipment context
+    try {
+        const response = await queryTroubleshootAgent(equipment);
+        responseEl.innerHTML = `<div class="troubleshoot-result">${parseMarkdown(response)}</div>`;
+    } catch (err) {
+        responseEl.innerHTML = `<div class="troubleshoot-error">Failed to get troubleshooting guidance: ${err.message}</div>`;
+    }
+}
+
+function closeTroubleshootModal() {
+    const overlay = document.getElementById('troubleshoot-modal-overlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
+async function queryTroubleshootAgent(equipment) {
+    const prompt = `Equipment "${equipment.machine}" at ${equipment.enterprise}/${equipment.site} is DOWN.
+Status: ${equipment.status || equipment.stateName}
+Reason: ${equipment.reason || 'Unknown'}
+Reason Code: ${equipment.reasonCode || 'N/A'}
+Duration: ${equipment.durationFormatted || 'Unknown'}
+
+Please:
+1. Query the knowledge base for any SOPs or troubleshooting guides related to this equipment or failure reason
+2. Get the last 15 minutes of sensor data history for this machine to identify what led to the failure
+3. Provide likely causes and step-by-step troubleshooting guidance
+4. Recommend immediate actions to restore operation`;
+
+    const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            message: prompt,
+            sessionId: `troubleshoot-${equipment.machine}-${Date.now()}`
+        })
+    });
+    
+    if (!response.ok) throw new Error(`Agent request failed: ${response.status}`);
+    
+    // Handle streaming response
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let result = '';
+    
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split('\n')) {
+            if (line.startsWith('data: ')) {
+                try {
+                    const data = JSON.parse(line.slice(6));
+                    result += typeof data === 'string' ? data : (data.text || data.content || '');
+                } catch { result += line.slice(6); }
+            } else if (line.trim() && !line.startsWith('event:')) {
+                result += line;
+            }
+        }
+    }
+    return result || 'No response from agent';
 }
 
 // Render equipment state grid
