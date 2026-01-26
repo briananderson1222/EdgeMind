@@ -277,7 +277,38 @@ mqttClient.on('message', async (topic, message) => {
 
   // Detect and cache equipment state changes
   const topicLower = topic.toLowerCase();
-  if (topicLower.includes('statecurrent') || (topicLower.includes('state') && !topicLower.includes('statereason'))) {
+  
+  // Handle StateReason topics (Enterprise A: .../State/StateReason)
+  if (topicLower.includes('statereason')) {
+    const parts = topic.split('/');
+    // Pattern: Enterprise A/Dallas/Line 1/Area/Machine/State/StateReason
+    if (parts.length >= 5) {
+      const enterprise = parts[0];
+      const site = parts[1];
+      const machine = parts[parts.length - 3]; // Machine is 3 levels up from StateReason
+      const equipmentKey = `${enterprise}/${site}/${machine}`;
+      
+      const existingState = equipmentStateCache.states.get(equipmentKey);
+      if (existingState) {
+        existingState.reason = String(payload);
+        existingState.lastUpdate = timestamp;
+        equipmentStateCache.states.set(equipmentKey, existingState);
+        
+        // Broadcast reason update
+        broadcastToClients({
+          type: 'equipment_state',
+          data: {
+            ...existingState,
+            durationMs: Date.now() - new Date(existingState.firstSeen).getTime(),
+            durationFormatted: formatDuration(Date.now() - new Date(existingState.firstSeen).getTime())
+          }
+        });
+        console.log(`[STATE-REASON] ${equipmentKey}: ${payload}`);
+      }
+    }
+  }
+  // Handle state current topics
+  else if (topicLower.includes('statecurrent') || (topicLower.includes('state') && !topicLower.includes('statereason'))) {
     const parts = topic.split('/');
     if (parts.length >= 3) {
       const enterprise = parts[0];
@@ -321,7 +352,7 @@ mqttClient.on('message', async (topic, message) => {
             state: stateValue,
             stateName: stateInfo.name,
             color: stateInfo.color,
-            reason: null,
+            reason: existingState?.reason || null,
             lastUpdate: timestamp,
             firstSeen: existingState ? existingState.firstSeen : timestamp
           };

@@ -778,10 +778,36 @@ async function fetchEquipmentStates() {
 
 // Update equipment state from WebSocket message
 function updateEquipmentState(data) {
-    if (data.id && data.state) {
-        state.equipmentStates.set(data.id, data);
-        updateEquipmentStateGrid();
+    if (!data.id) return;
+    
+    const key = data.id;
+    const previous = state.equipmentStates.get(key);
+    const prevStateName = previous?.stateName?.toUpperCase();
+    const newStateName = (data.stateName || data.state || '').toString().toUpperCase();
+    
+    state.equipmentStates.set(key, data);
+    updateEquipmentStateGrid();
+    
+    // Detect transition TO down state
+    if (newStateName === 'DOWN' && prevStateName !== 'DOWN') {
+        onEquipmentDown(data);
     }
+}
+
+function onEquipmentDown(equipment) {
+    const reason = equipment.reason || 'Unknown';
+    showToast(`⚠️ ${equipment.machine || equipment.name} is DOWN: ${reason}`, 'error');
+    
+    // Dispatch event for other components
+    window.dispatchEvent(new CustomEvent('equipmentDown', { detail: equipment }));
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 6000);
 }
 
 // Render equipment state grid
@@ -823,11 +849,13 @@ function updateEquipmentStateGrid() {
 
     // Render equipment cards
     grid.innerHTML = states.map(equipment => {
-        const stateClass = equipment.state.toLowerCase();
+        const stateClass = (equipment.stateName || equipment.state || '').toString().toLowerCase();
+        const reason = equipment.reason ? `<div class="equipment-reason" title="${equipment.reason}">${equipment.reason}</div>` : '';
         return `
             <div class="equipment-card ${stateClass}">
-                <div class="equipment-name" title="${equipment.name}">${equipment.name}</div>
-                <div class="equipment-state">${equipment.state}</div>
+                <div class="equipment-name" title="${equipment.name || equipment.machine}">${equipment.name || equipment.machine}</div>
+                <div class="equipment-state">${equipment.stateName || equipment.state}</div>
+                ${reason}
             </div>
         `;
     }).join('');
