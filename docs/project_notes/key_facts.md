@@ -48,8 +48,18 @@ cdk deploy --all --profile reply
 ### Docker Container
 - **Container Name**: `edgemind-backend`
 - **ECR Image**: `718815871498.dkr.ecr.us-east-1.amazonaws.com/edgemind-prod-backend:latest`
-- **Bind Mounts**: `server.js`, `index.html` (read-only)
-- **NOT Bind-Mounted**: `lib/`, `styles.css`, `app.js` (must use `docker cp`)
+- **Bind Mounts (EC2)**: `server.js`, `index.html` (read-only)
+- **NOT Bind-Mounted (EC2)**: `lib/`, `styles.css`, `app.js` (must use `docker cp`)
+
+#### Local Development: Frontend Live Reload (PR #9)
+`docker-compose.local.yml` now mounts frontend files for hot reload without rebuild:
+```yaml
+volumes:
+  - ../index.html:/app/index.html:ro
+  - ../styles.css:/app/styles.css:ro
+  - ../app.js:/app/app.js:ro
+```
+Edit frontend files locally, refresh browser - no container restart needed.
 
 #### ⚠️ CRITICAL: Files That Must Be In Container
 These files are NOT bind-mounted and must be copied manually after container recreation:
@@ -161,6 +171,35 @@ sudo docker run -d \
 - **Tier 1**: Direct OEE measurement (highest confidence)
 - **Tier 2**: Calculated from A/P/Q components
 - **Tier 3**: Estimated from related metrics
+
+### OEE Measurement Naming Conventions (IMPORTANT)
+OEE measurements use TWO naming conventions depending on enterprise/source:
+
+| Convention | Enterprise | Examples |
+|------------|------------|----------|
+| `OEE_*` | Enterprise A (Glass) | `OEE_Availability`, `OEE_Performance`, `OEE_Quality` |
+| `metric_*` | Enterprise B (Beverage) | `metric_availability`, `metric_performance`, `metric_quality`, `metric_oee` |
+
+**Always query BOTH conventions** in InfluxDB:
+```flux
+r._measurement == "OEE_Availability" or r._measurement == "metric_availability"
+```
+
+**Value normalization pattern** (handles both decimal 0-1 and percentage 0-100):
+```javascript
+const normalize = (val) => {
+  if (val === undefined || val === null) return null;
+  if (val > 0 && val <= 1.5) val = val * 100;  // Convert decimal to percentage
+  return parseFloat(Math.min(100, Math.max(0, val)).toFixed(1));
+};
+```
+
+**Calculate OEE from components** when direct measurement unavailable:
+```javascript
+if (oee === null && availability && performance && quality) {
+  oee = (availability/100) * (performance/100) * (quality/100) * 100;
+}
+```
 
 ---
 
