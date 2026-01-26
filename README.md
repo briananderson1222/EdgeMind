@@ -6,7 +6,7 @@ Real-time factory intelligence dashboard for the ProveIt! Conference 2026. Conne
 
 ## Architecture
 
-![EdgeMind Architecture](docs/edgemind_architecture_python.png)
+![EdgeMind Architecture](docs/edgemind_architecture.png)
 
 ```
 MQTT Broker (virtualfactory.proveit.services:1883)
