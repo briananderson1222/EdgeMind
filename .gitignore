@@ -48,3 +48,6 @@ coverage/
 # AI Helpers
 
 CLAUDE.md
+
+# AgentCore (contains absolute paths and deployment state)
+.bedrock_agentcore.yaml
