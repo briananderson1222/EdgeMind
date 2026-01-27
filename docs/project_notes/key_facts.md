@@ -16,12 +16,19 @@ Project configuration, constants, and frequently-needed reference information.
 
 ## Infrastructure
 
-### NEW: Hybrid ECS + S3/CloudFront Architecture (ADR-006)
+### Hybrid ECS + S3/CloudFront Architecture (ADR-006)
 - **Frontend**: S3 + CloudFront (static files)
 - **Backend**: ECS Fargate behind ALB
+- **Cluster**: `edgemind-prod-cluster`
 - **IaC**: AWS CDK Python (`/infra/` directory)
 - **CI/CD**: GitHub Actions (`.github/workflows/`)
 - **AWS Profile**: `reply`
+
+#### ⚠️ DEPLOYMENT RULES (IMPORTANT)
+1. **NEVER manually fix production** - Always use CI/CD or CDK templates
+2. **Push to feature branch** → Create PR to `main` → Merge triggers deploy
+3. GitHub Actions pipeline triggers on push to `main` only
+4. EC2 instance has been **terminated** - no longer exists
 
 #### CDK Stacks
 | Stack | Purpose |
@@ -33,23 +40,14 @@ Project configuration, constants, and frequently-needed reference information.
 | `edgemind-prod-frontend` | S3 + CloudFront |
 | `edgemind-prod-agentcore` | Bedrock Agents multi-agent system |
 
-#### Deploy Commands
+#### Deploy Commands (CDK only)
 ```bash
 cd infra && source .venv/bin/activate
 cdk deploy --all --profile reply
 ```
 
-### LEGACY: EC2 Production Server (being replaced)
-- **Host**: `174.129.90.76`
-- **SSH Key**: `~/.ssh/edgemind-demo.pem`
-- **SSH Command**: `ssh -i ~/.ssh/edgemind-demo.pem ec2-user@174.129.90.76`
-- **Production URL**: http://174.129.90.76:3000
-
 ### Docker Container
-- **Container Name**: `edgemind-backend`
 - **ECR Image**: `718815871498.dkr.ecr.us-east-1.amazonaws.com/edgemind-prod-backend:latest`
-- **Bind Mounts (EC2)**: `server.js`, `index.html` (read-only)
-- **NOT Bind-Mounted (EC2)**: `lib/`, `styles.css`, `app.js` (must use `docker cp`)
 
 #### Local Development: Frontend Live Reload (PR #9)
 `docker-compose.local.yml` now mounts frontend files for hot reload without rebuild:
@@ -61,24 +59,6 @@ volumes:
 ```
 Edit frontend files locally, refresh browser - no container restart needed.
 
-#### ⚠️ CRITICAL: Files That Must Be In Container
-These files are NOT bind-mounted and must be copied manually after container recreation:
-```
-lib/          # Backend modules - REQUIRED or server crashes
-styles.css    # Frontend styles - REQUIRED or UI breaks
-app.js        # Frontend JavaScript - REQUIRED or dashboard non-functional
-```
-**Recovery command:**
-```bash
-ssh -i $SSH_KEY $EC2_HOST "sudo docker cp ~/app/lib edgemind-backend:/app/ && sudo docker cp ~/app/styles.css edgemind-backend:/app/ && sudo docker cp ~/app/app.js edgemind-backend:/app/"
-```
-**Dockerfile must include:**
-```dockerfile
-COPY lib/ ./lib/
-COPY styles.css ./
-COPY app.js ./
-```
-
 ### InfluxDB
 - **Local Port**: `8086`
 - **Username**: `admin`
@@ -88,9 +68,7 @@ COPY app.js ./
 
 ### ChromaDB
 - **Local Port**: `8000`
-- **EC2 Container**: `chromadb` (image: `chromadb/chroma:latest`)
-- **EC2 Network**: `edgemind-net` (shared with backend and influxdb)
-- **EC2 Volume**: `chromadb-data:/data` (persistent)
+- **Fargate Service**: Part of `edgemind-prod-database` stack
 - **API Endpoint**: `GET /api/v2/heartbeat`
 - **Purpose**: Vector database for anomaly persistence and RAG
 - **Backend Env**: `CHROMA_HOST=chromadb` (container name, not localhost)
@@ -98,7 +76,7 @@ COPY app.js ./
 #### ⚠️ ChromaDB Health Check Pattern (IMPORTANT)
 The `chromadb/chroma` image does NOT have `curl`, `wget`, or `python` in PATH. Use bash TCP check:
 ```bash
-# Works in: docker-compose, EC2, ECS Fargate - ALL environments
+# Works in: docker-compose, ECS Fargate - ALL environments
 bash -c 'echo > /dev/tcp/localhost/8000'
 ```
 **CDK (ECS):**
@@ -118,18 +96,6 @@ healthcheck:
   interval: 30s
   timeout: 5s
   retries: 3
-```
-
-#### EC2 ChromaDB Deployment Command
-```bash
-# With persistence and restart policy
-sudo docker run -d \
-  --name chromadb \
-  --network edgemind-net \
-  -p 8000:8000 \
-  -v chromadb-data:/data \
-  --restart unless-stopped \
-  chromadb/chroma
 ```
 
 ---
@@ -250,9 +216,9 @@ if (oee === null && availability && performance && quality) {
 
 ## Important URLs
 
-### Monitoring
-- **Production Dashboard**: http://174.129.90.76:3000
-- **Health Check**: http://174.129.90.76:3000/health
+### Production (Fargate + CloudFront)
+- **Production Dashboard**: https://edge-mind.concept-reply-sandbox.com
+- **Health Check**: https://edge-mind.concept-reply-sandbox.com/health
 
 ### Documentation
 - **CLAUDE.md**: Project instructions for AI assistants
