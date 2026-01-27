@@ -172,25 +172,45 @@ On-demand deep analysis via multi-agent collaboration:
 
 ```mermaid
 flowchart LR
-    subgraph EC2[AWS EC2 Instance]
-        subgraph docker[Docker Container]
-            SERVER[server.js]
+    subgraph github[GitHub]
+        REPO[Repository]
+        GHA[GitHub Actions]
+    end
+
+    subgraph aws[AWS]
+        subgraph compute[Compute]
+            ECR[ECR Registry]
+            ECS[ECS Fargate<br/>edgemind-prod-cluster]
         end
-        BIND[Bind Mounts:<br/>server.js<br/>index.html]
+        subgraph cdn[CDN]
+            S3[S3 Bucket<br/>edgemind-prod-frontend]
+            CF[CloudFront]
+        end
     end
 
     subgraph local[Local Development]
         DEV[npm run dev]
     end
 
-    EC2 --> |Port 3000| USERS[Users]
-    local --> |Port 3000| DEVUSER[Developer]
+    REPO -->|push to main| GHA
+    GHA -->|backend changes| ECR
+    ECR -->|deploy| ECS
+    GHA -->|frontend changes| S3
+    S3 -->|origin| CF
+    CF -->|HTTPS| USERS[Users]
+    ECS -->|API| CF
+    local -->|Port 3000| DEVUSER[Developer]
 ```
 
-**Production (EC2):**
-- Container: `edgemind-backend`
-- Bind mounts: server.js, index.html (hot reload)
-- Manual copy: lib/, styles.css, app.js
+**Production (Fargate + S3/CloudFront):**
+- Backend: ECS Fargate service `edgemind-prod-backend` on cluster `edgemind-prod-cluster`
+- Frontend: S3 bucket `edgemind-prod-frontend` with CloudFront CDN
+- CI/CD: GitHub Actions with OIDC authentication (no stored AWS keys)
+- Deploy trigger: Push to `main` branch
+
+**Deployment Triggers:**
+- Backend (`deploy-backend.yml`): server.js, lib/**, package.json, Dockerfile
+- Frontend (`deploy-frontend.yml`): index.html, styles.css, app.js, assets/**
 
 **Development (Local):**
 - `npm run dev` with nodemon for auto-reload

@@ -59,6 +59,101 @@ MAINTAINX_DEFAULT_LOCATION_ID=location_123
 MAINTAINX_DEFAULT_ASSIGNEE_ID=user_456
 ```
 
+## Production Deployment
+
+### Setting Environment Variables in Production
+
+Production environment variables are managed through the ECS Task Definition, which is defined in CDK infrastructure code.
+
+**Key points:**
+- Environment variables are set in the CDK stack at `infra/stacks/`
+- Non-sensitive values can be set directly in the task definition
+- Secrets (API keys) should be stored in AWS Secrets Manager or SSM Parameter Store
+
+**CDK Task Definition Example:**
+
+```python
+# In infra/stacks/backend_stack.py
+task_definition.add_container(
+    "backend",
+    environment={
+        "CMMS_ENABLED": "true",
+        "CMMS_PROVIDER": "maintainx",
+        "MAINTAINX_BASE_URL": "https://api.getmaintainx.com/v1",
+    },
+    secrets={
+        "MAINTAINX_API_KEY": ecs.Secret.from_secrets_manager(
+            maintainx_secret, "api_key"
+        ),
+    },
+)
+```
+
+### Adding New CMMS API Keys
+
+To add a new CMMS provider's API key to production:
+
+1. **Store the API key in AWS Secrets Manager:**
+   ```bash
+   aws secretsmanager create-secret \
+     --name edgemind/cmms/maintainx \
+     --secret-string '{"api_key":"your_api_key_here"}' \
+     --profile reply
+   ```
+
+2. **Update the CDK task definition** in `infra/stacks/` to inject the secret:
+   ```python
+   maintainx_secret = secretsmanager.Secret.from_secret_name_v2(
+       self, "MaintainXSecret", "edgemind/cmms/maintainx"
+   )
+
+   # Add to container secrets
+   secrets={
+       "MAINTAINX_API_KEY": ecs.Secret.from_secrets_manager(
+           maintainx_secret, "api_key"
+       ),
+   }
+   ```
+
+3. **Deploy via CI/CD:**
+   ```bash
+   # Push CDK changes to main branch
+   git add infra/
+   git commit -m "feat: add MaintainX API key to production"
+   git push origin main
+   ```
+
+   Or deploy directly with CDK:
+   ```bash
+   cd infra && cdk deploy edgemind-prod-backend --profile reply
+   ```
+
+### Enabling CMMS in Production
+
+1. **Set required environment variables** in the task definition:
+   - `CMMS_ENABLED=true`
+   - `CMMS_PROVIDER=maintainx` (or your provider)
+   - Provider-specific config (base URL, etc.)
+
+2. **Deploy the changes** via normal CI/CD (push to main)
+
+3. **Verify the integration** after deployment:
+   ```bash
+   curl -s https://edge-mind.concept-reply-sandbox.com/api/cmms/health | jq
+   ```
+
+   Expected response:
+   ```json
+   {
+     "enabled": true,
+     "healthy": true,
+     "message": "MaintainX connection OK",
+     "provider": "MaintainX",
+     "baseUrl": "https://api.getmaintainx.com/v1",
+     "timestamp": "2025-01-27T10:00:00Z"
+   }
+   ```
+
 ### Getting Started with MaintainX
 
 1. **Obtain API Key:**
