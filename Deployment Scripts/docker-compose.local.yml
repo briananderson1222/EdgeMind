@@ -2,9 +2,9 @@
 # Usage: ./local-deploy.sh (recommended) or docker compose -f docker-compose.local.yml up -d
 
 services:
-  bedrock-kb:
+  chromadb:
     image: chromadb/chroma:latest
-    container_name: edgemind-bedrock-kb
+    container_name: edgemind-chromadb
     ports:
       - "${CHROMA_PORT:-8002}:8000"
     environment:
@@ -18,21 +18,20 @@ services:
       retries: 5
     restart: unless-stopped
 
-  bedrock-kb-init:
-    build:
-      context: ../agent/edgemindassistant
-      dockerfile: Dockerfile
-    container_name: edgemind-bedrock-kb-init
-    command: ["python", "scripts/ingest_kb.py"]
+  kb-init:
+    image: python:3.11-slim
+    container_name: edgemind-kb-init
+    entrypoint: ["/bin/sh", "-c", "pip install -q chromadb pymupdf && python /app/scripts/ingest_kb.py"]
     environment:
-      - CHROMA_HOST=bedrock-kb
+      - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - KB_COLLECTION=${KB_COLLECTION:-edgemind_sops}
       - KB_PATH=/app/knowledge-base
     volumes:
+      - ./scripts:/app/scripts:ro
       - ../knowledge-base:/app/knowledge-base:ro
     depends_on:
-      bedrock-kb:
+      chromadb:
         condition: service_healthy
     restart: "no"
 
@@ -57,11 +56,11 @@ services:
       retries: 5
     restart: unless-stopped
 
-  agentcore-runtime:
+  agent-chat:
     build:
-      context: ../agent/edgemindassistant
+      context: ../agent/chat
       dockerfile: Dockerfile
-    container_name: edgemind-agent
+    container_name: edgemind-agent-chat
     ports:
       - "8080:8080"
     environment:
@@ -70,19 +69,66 @@ services:
       - AWS_SECRET_ACCESS_KEY
       - AWS_SESSION_TOKEN
       - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-20250514-v1:0}
-      - EDGEMIND_MCP_SERVER_URL=http://agentcore-gateway:8000/mcp
-      # Knowledge Base config - local ChromaDB
+      - MCP_SERVER_URL=http://agentcore-gateway:8000/mcp
       - KB_BACKEND=${KB_BACKEND:-local}
-      - CHROMA_HOST=bedrock-kb
+      - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - KB_COLLECTION=${KB_COLLECTION:-edgemind_sops}
-      # For Bedrock KB (when KB_BACKEND=bedrock)
-      - KNOWLEDGE_BASE_ID=${KNOWLEDGE_BASE_ID:-}
     depends_on:
       agentcore-gateway:
         condition: service_healthy
-      bedrock-kb:
+      chromadb:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  agent-troubleshoot:
+    build:
+      context: ../agent/troubleshoot
+      dockerfile: Dockerfile
+    container_name: edgemind-agent-troubleshoot
+    ports:
+      - "8081:8080"
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-20250514-v1:0}
+      - MCP_SERVER_URL=http://agentcore-gateway:8000/mcp
+      - KB_BACKEND=${KB_BACKEND:-local}
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - KB_COLLECTION=${KB_COLLECTION:-edgemind_sops}
+    depends_on:
+      agentcore-gateway:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  agent-anomaly:
+    build:
+      context: ../agent/anomaly
+      dockerfile: Dockerfile
+    container_name: edgemind-agent-anomaly
+    ports:
+      - "8082:8080"
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-sonnet-4-20250514-v1:0}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
       interval: 10s
@@ -136,10 +182,12 @@ services:
       - INFLUXDB_ORG=${INFLUXDB_ORG:-proveit}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-factory}
       # ChromaDB Configuration (uses internal Docker network)
-      - CHROMA_HOST=bedrock-kb
+      - CHROMA_HOST=chromadb
       - CHROMA_PORT=${CHROMA_PORT:-8000}
-      # AgentCore agent URL (internal Docker network)
-      - AGENTCORE_URL=http://agentcore-runtime:8080
+      # AgentCore URLs (internal Docker network)
+      - AGENT_CHAT_URL=http://agent-chat:8080
+      - AGENT_TROUBLESHOOT_URL=http://agent-troubleshoot:8080
+      - AGENT_ANOMALY_URL=http://agent-anomaly:8080
       # AI Configuration (AWS Bedrock)
       - AWS_REGION=${AWS_REGION:-us-east-1}
       # Note: Don't set AWS_PROFILE - it conflicts with explicit credentials
@@ -158,10 +206,13 @@ services:
       - ../index.html:/app/index.html:ro
       - ../styles.css:/app/styles.css:ro
       - ../app.js:/app/app.js:ro
+      # Mount backend files (restart container to pick up changes)
+      - ../server.js:/app/server.js:ro
+      - ../lib:/app/lib:ro
     depends_on:
       influxdb:
         condition: service_healthy
-      bedrock-kb:
+      chromadb:
         condition: service_healthy
     restart: unless-stopped
 

@@ -10,8 +10,9 @@ const { influxDB, writeApi, queryApi, Point, parseTopicToInflux, writeSparkplugM
 const { createCmmsProvider } = require('./lib/cmms-interface');
 const aiModule = require('./lib/ai');
 const vectorStore = require('./lib/vector');
-const { isSparkplugTopic, decodePayload, extractMetrics } = require('./lib/sparkplug/decoder');
+const { decodePayload, extractMetrics } = require('./lib/sparkplug/decoder');
 const { createAgentCoreClient } = require('./lib/agentcore');
+const { getEquipmentState, getSparkplugInfo, extractPayloadValue, normalizeState, classifyTopic, fanOutMessage } = require('./lib/mqtt/topic-classifier');
 
 // Foundation modules
 const CONFIG = require('./lib/config');
@@ -184,15 +185,71 @@ mqttClient.on('message', async (topic, message) => {
   factoryState.stats.messageCount++;
   factoryState.stats.lastUpdate = timestamp;
 
-  // SPARKPLUG B PROTOCOL HANDLING
-  // Check if this is a Sparkplug B message (topic starts with spBv1.0/)
-  if (isSparkplugTopic(topic)) {
-    try {
-      // Decode the Sparkplug protobuf payload
-      const decodedPayload = decodePayload(message);
+  // =============================================================================
+  // EQUIPMENT STATE HANDLING - Normalized output regardless of source
+  // Output schema: { enterprise, site, machine, status, statusCode, reason, reasonCode }
+  // status: "running" | "idle" | "down" | "unknown"
+  // =============================================================================
+  
+  const normalizeStatus = (value) => {
+    const v = String(value).toLowerCase();
+    if (['1', 'down', 'stop', 'fault', 'error', 'unplanned'].some(s => v.includes(s))) return { status: 'down', statusCode: 1 };
+    if (['2', 'idle', 'standby', 'wait', 'planned'].some(s => v.includes(s))) return { status: 'idle', statusCode: 2 };
+    if (['3', '0', 'run', 'active', 'operating', 'clean', 'pasteur', 'transfer', 'fill', 'mix', 'cip'].some(s => v.includes(s))) return { status: 'running', statusCode: 3 };
+    return { status: 'unknown', statusCode: null };
+  };
 
-      // Extract normalized metrics from the payload
+  const updateEquipmentState = (equipmentKey, updates, tags = {}) => {
+    const existing = equipmentStateCache.states.get(equipmentKey) || {};
+    const status = updates.status || existing.status || 'unknown';
+    
+    const stateData = {
+      enterprise: tags.enterprise || existing.enterprise,
+      site: tags.site || existing.site,
+      area: tags.area || existing.area || null,
+      machine: tags.machine || existing.machine || null,
+      device: tags.device || existing.device,
+      status,
+      reason: updates.reason || existing.reason || null,
+      color: { running: '#28a745', idle: '#ffc107', down: '#dc3545', unknown: '#888888' }[status],
+      lastUpdate: timestamp,
+      firstSeen: existing.firstSeen || timestamp
+    };
+    
+    const statusChanged = existing.status !== stateData.status;
+    const reasonChanged = updates.reason && updates.reason !== existing.reason;
+    equipmentStateCache.states.set(equipmentKey, stateData);
+    
+    if (statusChanged || reasonChanged) {
+      broadcastToClients({
+        type: 'equipment_state',
+        data: {
+          id: equipmentKey,
+          ...stateData,
+          durationMs: Date.now() - new Date(stateData.firstSeen).getTime(),
+          durationFormatted: formatDuration(Date.now() - new Date(stateData.firstSeen).getTime())
+        }
+      });
+      if (statusChanged) console.log(`[STATE] ${equipmentKey}: ${status.toUpperCase()}`);
+    }
+  };
+
+  // SPARKPLUG B PROTOCOL HANDLING
+  const sparkplug = getSparkplugInfo(topic);
+  if (sparkplug) {
+    // STATE messages are plain text (ONLINE/OFFLINE), not protobuf
+    if (sparkplug.isState) {
+      console.log(`[SPARKPLUG] Node ${sparkplug.tags.nodeId} state: ${message.toString()}`);
+      return;
+    }
+    
+    try {
+      const decodedPayload = decodePayload(message);
       const metrics = extractMetrics(topic, decodedPayload);
+      
+      if (metrics.length > 0) {
+        console.log(`[SPARKPLUG] ${topic}: ${metrics.length} metrics`);
+      }
 
       // Write each metric to InfluxDB
       for (const metric of metrics) {
@@ -208,12 +265,25 @@ mqttClient.on('message', async (topic, message) => {
         }
       }
 
+      // Track equipment state from Sparkplug metrics
+      const stateMetric = metrics.find(m => m.name.toLowerCase().includes('state') && m.valueType === 'string');
+      if (stateMetric && stateMetric.tags.deviceId) {
+        const equipmentKey = `${stateMetric.tags.enterprise}/${stateMetric.tags.site}/${stateMetric.tags.deviceId}`;
+        const normalized = normalizeStatus(stateMetric.value);
+        updateEquipmentState(equipmentKey, { ...normalized, reason: String(stateMetric.value) }, {
+          enterprise: stateMetric.tags.enterprise,
+          site: stateMetric.tags.site,
+          device: stateMetric.tags.deviceId
+        });
+      }
+
       // Broadcast to WebSocket clients (throttled - every 10th message)
       if (factoryState.stats.messageCount % 10 === 0 && metrics.length > 0) {
         // Format Sparkplug message for frontend display
         const displayMetrics = metrics.slice(0, 5).map(m =>
           `${m.name}=${m.value} (${m.valueType})`
         ).join(', ');
+        const classified = classifyTopic(topic);
 
         broadcastToClients({
           type: 'mqtt_message',
@@ -222,7 +292,9 @@ mqttClient.on('message', async (topic, message) => {
             topic,
             payload: `[Sparkplug B] ${metrics.length} metrics: ${displayMetrics}${metrics.length > 5 ? '...' : ''}`,
             id: `msg_${Date.now()}_${Math.random()}`,
-            protocol: 'sparkplug_b'
+            protocol: 'sparkplug_b',
+            type: classified.type,
+            ...classified.tags
           }
         });
       }
@@ -239,12 +311,15 @@ mqttClient.on('message', async (topic, message) => {
 
   // STANDARD JSON/TEXT PROCESSING (non-Sparkplug messages)
   const payload = message.toString();
+  const classified = classifyTopic(topic);
 
   const mqttMessage = {
     timestamp,
     topic,
     payload,
-    id: `msg_${Date.now()}_${Math.random()}`
+    id: `msg_${Date.now()}_${Math.random()}`,
+    type: classified.type,
+    ...classified.tags
   };
 
   // Phase 4: Detect new measurements
@@ -275,106 +350,14 @@ mqttClient.on('message', async (topic, message) => {
     console.log(`[SCHEMA] New measurement detected: ${measurement} from topic: ${topic}`);
   }
 
-  // Detect and cache equipment state changes
-  const topicLower = topic.toLowerCase();
-  
-  // =============================================================================
-  // EQUIPMENT STATE HANDLING - Normalized output regardless of source
-  // Output schema: { enterprise, site, machine, status, statusCode, reason, reasonCode }
-  // status: "running" | "idle" | "down" | "unknown"
-  // =============================================================================
-  
-  const updateEquipmentState = (equipmentKey, updates) => {
-    const existing = equipmentStateCache.states.get(equipmentKey) || {};
-    const [enterprise, site, machine] = equipmentKey.split('/');
+  // Detect and cache equipment state changes using topic classifier
+  const equipment = getEquipmentState(topic);
+  if (equipment) {
+    const { value, quality } = extractPayloadValue(payload);
     
-    const stateData = {
-      enterprise,
-      site, 
-      machine,
-      status: updates.status || existing.status || 'unknown',
-      statusCode: updates.statusCode ?? existing.statusCode ?? null,
-      reason: updates.reason || existing.reason || null,
-      reasonCode: updates.reasonCode || existing.reasonCode || null,
-      // Legacy fields for backward compatibility
-      state: updates.statusCode ?? existing.statusCode ?? null,
-      stateName: (updates.status || existing.status || 'unknown').toUpperCase(),
-      color: { running: '#28a745', idle: '#ffc107', down: '#dc3545', unknown: '#888888' }[updates.status || existing.status || 'unknown'],
-      lastUpdate: timestamp,
-      firstSeen: existing.firstSeen || timestamp
-    };
-    
-    const statusChanged = existing.status !== stateData.status;
-    equipmentStateCache.states.set(equipmentKey, stateData);
-    
-    if (statusChanged || updates.reason) {
-      broadcastToClients({
-        type: 'equipment_state',
-        data: {
-          id: equipmentKey,
-          ...stateData,
-          durationMs: Date.now() - new Date(stateData.firstSeen).getTime(),
-          durationFormatted: formatDuration(Date.now() - new Date(stateData.firstSeen).getTime())
-        }
-      });
-      if (statusChanged) console.log(`[STATE] ${equipmentKey}: ${stateData.status.toUpperCase()}`);
-    }
-  };
-
-  const normalizeStatus = (value) => {
-    const v = String(value).toLowerCase();
-    if (['1', 'down', 'stop', 'fault', 'error'].some(s => v.includes(s))) return { status: 'down', statusCode: 1 };
-    if (['2', 'idle', 'standby', 'wait', 'planned'].some(s => v.includes(s))) return { status: 'idle', statusCode: 2 };
-    if (['3', '0', 'run', 'active', 'operating'].some(s => v === s || v.includes(s))) return { status: 'running', statusCode: 3 };
-    if (['cip', 'mix', 'fill'].some(s => v.includes(s))) return { status: 'running', statusCode: 3 }; // Process states = running
-    return { status: 'unknown', statusCode: null };
-  };
-
-  // Enterprise A: .../State/StateReason (e.g., RUN-NRM)
-  if (topicLower.includes('statereason')) {
-    const parts = topic.split('/');
-    if (parts.length >= 7) {
-      const equipmentKey = `${parts[0]}/${parts[1]}/${parts[parts.length - 3]}`;
-      const reasonCode = String(payload);
-      // Parse reason code: RUN-NRM -> status=running, reason=Normal
-      const reasonParts = reasonCode.split('-');
-      const statusFromReason = normalizeStatus(reasonParts[0]);
-      updateEquipmentState(equipmentKey, { 
-        ...statusFromReason,
-        reasonCode,
-        reason: reasonParts[1] || reasonCode
-      });
-    }
-  }
-  // Enterprise A: .../State/StateCurrent (numeric: 1=DOWN, 2=IDLE, 3=RUNNING)
-  else if (topicLower.includes('statecurrent')) {
-    const parts = topic.split('/');
-    if (parts.length >= 7) {
-      const equipmentKey = `${parts[0]}/${parts[1]}/${parts[parts.length - 3]}`;
-      updateEquipmentState(equipmentKey, normalizeStatus(payload));
-    }
-  }
-  // Enterprise B: .../processdata/state/name or state/code
-  else if (topicLower.includes('processdata/state/')) {
-    const parts = topic.split('/');
-    if (parts.length >= 6) {
-      const equipmentKey = `${parts[0]}/${parts[1]}/${parts[4]}`; // Enterprise/Site/Machine
-      const field = parts[parts.length - 1]; // name, code, type, duration
-      
-      if (field === 'name' || field === 'type') {
-        const normalized = normalizeStatus(payload);
-        updateEquipmentState(equipmentKey, { ...normalized, reason: String(payload) });
-      } else if (field === 'code') {
-        updateEquipmentState(equipmentKey, { reasonCode: String(payload) });
-      }
-    }
-  }
-  // Simple state topics (e.g., Enterprise A/Dallas/Line 1/OEE/State Running)
-  else if (topicLower.includes('/state') && !topicLower.includes('statereason') && !topicLower.includes('statecurrent') && !topicLower.includes('processdata')) {
-    const parts = topic.split('/');
-    if (parts.length >= 4) {
-      const equipmentKey = `${parts[0]}/${parts[1]}/${parts[parts.length - 2]}`;
-      updateEquipmentState(equipmentKey, normalizeStatus(payload));
+    if (equipment.field === 'state/type' || equipment.field === 'state/name' || equipment.field === 'state/code') {
+      const normalized = normalizeState(topic, value, quality);
+      updateEquipmentState(equipment.key, normalized, equipment.tags);
     }
   }
 
@@ -398,16 +381,36 @@ mqttClient.on('message', async (topic, message) => {
 
   // Broadcast to WebSocket clients (throttled - every 10th message)
   if (factoryState.stats.messageCount % 10 === 0) {
-    broadcastToClients({
-      type: 'mqtt_message',
-      data: mqttMessage
-    });
+    // Check if message should be fanned out into multiple messages
+    const fanOutMessages = fanOutMessage(topic, payload);
+    if (fanOutMessages && fanOutMessages.length > 0) {
+      // Broadcast each fanned-out message separately
+      fanOutMessages.forEach(fm => {
+        broadcastToClients({
+          type: 'mqtt_message',
+          data: {
+            timestamp,
+            topic: fm.topic,
+            payload: fm.payload,
+            id: `msg_${Date.now()}_${Math.random()}`,
+            type: fm.type,
+            ...fm.tags
+          }
+        });
+      });
+    } else {
+      // Normal single message broadcast
+      broadcastToClients({
+        type: 'mqtt_message',
+        data: mqttMessage
+      });
+    }
   }
 });
 
 // Flush InfluxDB writes periodically
 setInterval(() => {
-  writeApi.flush().catch(err => console.error('InfluxDB flush error:', err));
+  writeApi.flush().catch(err => console.error('InfluxDB flush error:', err.message));
 }, 5000);
 
 // Clean up stale equipment state cache entries periodically
@@ -538,14 +541,119 @@ app.get('/api/trends', async (req, res) => {
   res.json(trends);
 });
 
-// Chat endpoint - proxies to AgentCore agent
-const AGENTCORE_URL = process.env.AGENTCORE_URL || 'http://localhost:8080';
+// Equipment history helper - returns metrics and state changes
+async function getEquipmentHistory(enterprise, site, machine, minutes = 15, device = null) {
+  const timeRange = Math.min(minutes, 60);
+  // Filter by device if provided, otherwise by machine
+  const target = device || machine;
+  const deviceFilter = `r.device == "${target}"`;
+  
+  // Query for OEE and production metrics using data_type tag
+  const metricsQuery = `
+    from(bucket: "${CONFIG.influxdb.bucket}")
+      |> range(start: -${timeRange}m)
+      |> filter(fn: (r) => r.enterprise == "${enterprise}")
+      |> filter(fn: (r) => r.site == "${site}")
+      |> filter(fn: (r) => ${deviceFilter})
+      |> filter(fn: (r) => r.data_type == "oee" or r.data_type == "production_metric")
+      |> filter(fn: (r) => r._field == "value")
+      |> last()
+  `;
+  
+  // Query for equipment state history - get all state fields
+  const statesQuery = `
+    from(bucket: "${CONFIG.influxdb.bucket}")
+      |> range(start: -${timeRange}m)
+      |> filter(fn: (r) => r.enterprise == "${enterprise}")
+      |> filter(fn: (r) => r.site == "${site}")
+      |> filter(fn: (r) => ${deviceFilter})
+      |> filter(fn: (r) => r._measurement =~ /^state_/)
+      |> filter(fn: (r) => r._field == "value")
+      |> sort(columns: ["_time"], desc: true)
+      |> limit(n: 200)
+  `;
 
-async function invokeAgent(prompt, sessionId, agentType = 'chat') {
-  return fetch(`${AGENTCORE_URL}/invocations`, {
+  const [metricsRows, statesRows] = await Promise.all([
+    queryApi.collectRows(metricsQuery),
+    queryApi.collectRows(statesQuery)
+  ]);
+
+  // Format metrics as key-value
+  const metrics = {};
+  for (const row of metricsRows) {
+    const name = row._measurement.replace(/^metric_|^input_/, '');
+    metrics[name] = row._value;
+  }
+
+  // Unified state map for all enterprises (state_type and state_name values)
+  const stateMap = {
+    // Enterprise B state_type
+    'Running': { status: 'running', reason: 'Running' },
+    'Idle': { status: 'idle', reason: 'Idle' },
+    'PlannedDowntime': { status: 'down', reason: 'Planned Downtime' },
+    'UnplannedDowntime': { status: 'down', reason: 'Unplanned Downtime' },
+    'Unknown': { status: 'unknown', reason: 'Unknown' },
+    // Enterprise A state_name
+    'RUN-NRM': { status: 'running', reason: 'Running' },
+    // Enterprise C state_name  
+    'IDLE': { status: 'idle', reason: 'Idle' },
+  };
+
+  // Build state changes - prefer state_type, fallback to state_name
+  const stateChanges = [];
+  let lastValue = null;
+  
+  // Filter to state_type or state_name, prefer state_type when both exist
+  const typeRows = statesRows.filter(r => r._measurement === 'state_type' && typeof r._value === 'string');
+  const nameRows = statesRows.filter(r => r._measurement === 'state_name' && typeof r._value === 'string');
+  
+  // Use state_type if available, otherwise state_name
+  const rows = typeRows.length > 0 ? typeRows : nameRows;
+  const sorted = rows.sort((a, b) => new Date(b._time) - new Date(a._time));
+  
+  for (const row of sorted) {
+    if (row._value !== lastValue) {
+      const mapped = stateMap[row._value];
+      stateChanges.push({
+        time: row._time,
+        status: mapped?.status || 'unknown',
+        reason: mapped?.reason || row._value
+      });
+      lastValue = row._value;
+    }
+  }
+
+  return { metrics, stateChanges };
+}
+
+// Equipment history endpoint
+app.get('/api/equipment/:enterprise/:site/:machine/history', async (req, res) => {
+  const { enterprise, site, machine } = req.params;
+  const device = req.query.device || null;
+  const minutes = parseInt(req.query.minutes) || 15;
+
+  try {
+    const { metrics, stateChanges } = await getEquipmentHistory(enterprise, site, machine, minutes, device);
+    res.json({ enterprise, site, machine, device, minutes, metrics, stateChanges });
+  } catch (err) {
+    console.error('Equipment history error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Agent endpoints - separate runtimes for each agent type
+const AGENT_URLS = {
+  chat: process.env.AGENT_CHAT_URL || 'http://localhost:8080',
+  troubleshoot: process.env.AGENT_TROUBLESHOOT_URL || 'http://localhost:8081',
+  anomaly: process.env.AGENT_ANOMALY_URL || 'http://localhost:8082'
+};
+
+async function invokeAgent(agentType, prompt, sessionId) {
+  const url = AGENT_URLS[agentType] || AGENT_URLS.chat;
+  return fetch(`${url}/invocations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, session_id: sessionId || 'default', agent_type: agentType })
+    body: JSON.stringify({ prompt, session_id: sessionId || 'default' })
   });
 }
 
@@ -554,7 +662,7 @@ app.post('/api/chat', express.json(), async (req, res) => {
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
   try {
-    const response = await invokeAgent(prompt, sessionId, 'chat');
+    const response = await invokeAgent('chat', prompt, sessionId);
     if (!response.ok) throw new Error(`Agent error: ${response.status}`);
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -576,20 +684,25 @@ app.post('/api/chat', express.json(), async (req, res) => {
 });
 
 // Troubleshoot endpoint - specialized agent for equipment diagnostics
+// Uses context snapshot from UI, only needs KB access (no MCP/live data)
 app.post('/api/troubleshoot', express.json(), async (req, res) => {
   const { equipment, sessionId } = req.body;
   if (!equipment) return res.status(400).json({ error: 'equipment required' });
 
-  const prompt = `Equipment "${equipment.machine}" at ${equipment.enterprise}/${equipment.site} is DOWN.
-Status: ${equipment.status || equipment.stateName || 'DOWN'}
-Reason: ${equipment.reason || 'Unknown'}
-Reason Code: ${equipment.reasonCode || 'N/A'}
-Duration: ${equipment.durationFormatted || 'Unknown'}
+  // Build prompt from UI-provided context snapshot
+  const prompt = `Equipment "${equipment.machine}" at ${equipment.enterprise}/${equipment.site} is ${equipment.status || 'DOWN'}.
 
-Diagnose this issue and provide troubleshooting guidance.`;
+Current State (from UI at ${equipment.analysisRequestedAt || 'now'}):
+- Status: ${equipment.status || 'DOWN'}
+- Reason: ${equipment.reason || 'Unknown'}
+- Reason Code: ${equipment.reasonCode || 'N/A'}
+- In current state for: ${equipment.stateDuration || 'Unknown'}
+- State changed at: ${equipment.stateChangedAt || 'Unknown'}
+
+Based on the equipment type, reason code, and any relevant documentation in the knowledge base, diagnose this issue and provide troubleshooting guidance.`;
 
   try {
-    const response = await invokeAgent(prompt, sessionId, 'troubleshoot');
+    const response = await invokeAgent('troubleshoot', prompt, sessionId);
     if (!response.ok) throw new Error(`Agent error: ${response.status}`);
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -933,16 +1046,16 @@ app.get('/api/equipment/states', async (req, res) => {
       const durationMs = now - new Date(stateData.firstSeen).getTime();
 
       states.push({
+        id: key,
         enterprise: stateData.enterprise,
         site: stateData.site,
+        area: stateData.area,
         machine: stateData.machine,
-        // Normalized fields
-        status: stateData.status || stateData.stateName?.toLowerCase() || 'unknown',
-        statusCode: stateData.statusCode ?? stateData.state,
+        device: stateData.device,
+        status: stateData.status || 'unknown',
+        statusCode: stateData.statusCode,
         reason: stateData.reason,
-        reasonCode: stateData.reasonCode || null,
-        // Legacy fields
-        state: stateData.state,
+        reasonCode: stateData.reasonCode,
         stateName: stateData.stateName,
         color: stateData.color,
         durationMs,

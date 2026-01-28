@@ -1,5 +1,16 @@
 // REAL IMPLEMENTATION - Connects to actual backend
 
+// Format milliseconds to human readable duration
+function formatStateDuration(ms) {
+    if (!ms || ms < 0) return null;
+    const secs = Math.floor(ms / 1000);
+    if (secs < 60) return `${secs}s`;
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    return `${hrs}h ${mins % 60}m`;
+}
+
 // Cheeky messages when insights are disabled
 const SLEEPING_AGENT_MESSAGES = [
     "The AI is taking a power nap. Data collection continues.",
@@ -50,6 +61,8 @@ const state = {
     insightFilter: 'all',  // 'all' or 'anomalies'
     eventFilter: 'all',  // 'all', 'oee', 'state', 'alarm'
     equipmentStates: new Map(),  // Map of equipment ID to state
+    activeAlarms: new Map(),  // Map of alarm ID to alarm state
+    energyReadings: new Map(),  // Map of panel to power readings
     streamPaused: false,  // Pause/resume live stream
     anomalyFilters: [],  // User-defined anomaly filter rules
     thresholdSettings: {
@@ -60,6 +73,10 @@ const state = {
         defectRateCritical: 5
     }
 };
+
+function getActiveAlarms() {
+    return Array.from(state.activeAlarms.values()).filter(a => a.active);
+}
 
 // Initialize Charts
 window.oeeBreakdownChart = null;
@@ -677,6 +694,16 @@ function handleServerMessage(message) {
                 state.enterpriseCounts[enterprise] = (state.enterpriseCounts[enterprise] || 0) + 1;
             }
 
+            // Handle alarm messages
+            if (message.data.type === 'alarm') {
+                handleAlarmMessage(message.data);
+            }
+
+            // Handle energy messages
+            if (message.data.type === 'energy') {
+                handleEnergyMessage(message.data);
+            }
+
             addMQTTMessageToStream(message.data);
             updateMetrics();
             break;
@@ -739,29 +766,15 @@ async function fetchEquipmentStates() {
             // Populate equipment states map
             state.equipmentStates.clear();
             data.states.forEach(equipment => {
-                // Map API response to expected format
-                // API returns: enterprise, site, machine, state, stateName, color, reason
-                // Frontend expects: id, name, state
-                const key = `${equipment.enterprise}/${equipment.site}/${equipment.machine}`;
-                state.equipmentStates.set(key, {
-                    id: key,
-                    name: equipment.machine,
-                    state: equipment.stateName || equipment.state,
-                    enterprise: equipment.enterprise,
-                    site: equipment.site,
-                    reason: equipment.reason,
-                    color: equipment.color
-                });
+                state.equipmentStates.set(equipment.id, equipment);
             });
 
             // Update summary counts from API response
             if (data.summary) {
-                const runningEl = document.getElementById('state-running');
-                const idleEl = document.getElementById('state-idle');
-                const downEl = document.getElementById('state-down');
-                if (runningEl) runningEl.textContent = data.summary.running || 0;
-                if (idleEl) idleEl.textContent = data.summary.idle || 0;
-                if (downEl) downEl.textContent = data.summary.down || 0;
+                document.getElementById('state-running').textContent = data.summary.running || 0;
+                document.getElementById('state-idle').textContent = data.summary.idle || 0;
+                document.getElementById('state-down').textContent = data.summary.down || 0;
+                document.getElementById('state-unknown').textContent = data.summary.unknown || 0;
             }
 
             // Update the equipment state grid
@@ -776,93 +789,525 @@ async function fetchEquipmentStates() {
     }
 }
 
+// Local state history tracking (per equipment)
+const localStateHistory = new Map(); // equipmentId -> [{time, status, reason}]
+
 // Update equipment state from WebSocket message
 function updateEquipmentState(data) {
     if (!data.id) return;
     
     const key = data.id;
     const previous = state.equipmentStates.get(key);
-    const prevStateName = previous?.stateName?.toUpperCase();
-    const newStateName = (data.stateName || data.state || '').toString().toUpperCase();
+    const prevStateName = previous?.status?.toUpperCase();
+    const newStateName = data.status.toString().toUpperCase();
+    
+    // Track when state changed (frontend-side) - only reset if actual state change
+    if (newStateName && prevStateName && prevStateName !== newStateName) {
+        data.stateChangedAt = Date.now();
+        
+        // Add to local history
+        if (!localStateHistory.has(key)) localStateHistory.set(key, []);
+        const history = localStateHistory.get(key);
+        history.unshift({
+            time: new Date().toISOString(),
+            status: data.status?.toLowerCase() || 'unknown',
+            reason: data.reason || data.status || 'Unknown'
+        });
+        if (history.length > 20) history.pop(); // Keep last 20
+    } else {
+        data.stateChangedAt = previous?.stateChangedAt || data.stateChangedAt || Date.now();
+    }
     
     state.equipmentStates.set(key, data);
     updateEquipmentStateGrid();
+    
+    // Update modal if open for this equipment
+    if (currentEquipmentModalId === key) {
+        updateEquipmentModalRealtime(data);
+    }
     
     // Detect transition TO down state
     if (newStateName === 'DOWN' && prevStateName !== 'DOWN') {
         onEquipmentDown(data);
     }
+    // Update toast when equipment recovers
+    else if (prevStateName === 'DOWN' && newStateName !== 'DOWN') {
+        renderDownToasts();
+    }
+}
+
+function updateEquipmentModalRealtime(data) {
+    const statusBadge = document.getElementById('modal-status-badge');
+    const statusReason = document.getElementById('modal-status-reason');
+    const historyEl = document.getElementById('equipment-modal-history');
+    
+    if (statusBadge) {
+        const statusClass = (data.status || 'unknown').toLowerCase();
+        statusBadge.className = `status-badge ${statusClass}`;
+        statusBadge.textContent = (data.status || 'unknown').toUpperCase();
+    }
+    if (statusReason) {
+        statusReason.textContent = data.reason || '';
+    }
+    
+    // Prepend to history if we have local history
+    const history = localStateHistory.get(data.id);
+    if (history && history.length > 0 && historyEl) {
+        const timeline = historyEl.querySelector('.state-timeline');
+        if (timeline) {
+            const latest = history[0];
+            const timeStr = new Date(latest.time).toLocaleTimeString('en-US', {
+                hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3
+            });
+            const newEntry = document.createElement('div');
+            newEntry.className = `state-entry ${latest.status}`;
+            newEntry.innerHTML = `
+                <span class="state-time">${timeStr}</span>
+                <span class="state-status">${latest.status.toUpperCase()}</span>
+                <span class="state-reason">${latest.reason}</span>
+            `;
+            const firstEntry = timeline.querySelector('.state-entry');
+            if (firstEntry) {
+                timeline.insertBefore(newEntry, firstEntry);
+            } else {
+                timeline.appendChild(newEntry);
+            }
+        }
+    }
 }
 
 function onEquipmentDown(equipment) {
-    const reason = equipment.reason || 'Unknown';
-    showToast(`⚠️ ${equipment.machine || equipment.name} is DOWN: ${reason}`, 'error', equipment);
+    showDownToast();
     
     // Dispatch event for other components
     window.dispatchEvent(new CustomEvent('equipmentDown', { detail: equipment }));
 }
 
-function showToast(message, type = 'info', equipment = null) {
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
+// Down equipment toast management
+let toastContainer = null;
+let toastClearTimer = null;
+let toastExpanded = false;
+
+function getToastContainer() {
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container';
+        document.body.appendChild(toastContainer);
+    }
+    return toastContainer;
+}
+
+function showDownToast() {
+    clearTimeout(toastClearTimer);
+    toastClearTimer = setTimeout(() => {
+        const container = getToastContainer();
+        const existing = container.querySelector('.toast-group');
+        if (existing) existing.remove();
+        toastExpanded = false;
+    }, 15000);
+    renderDownToasts();
+}
+
+function getDownEquipment() {
+    const down = [];
+    state.equipmentStates.forEach((eq) => {
+        if (eq.status?.toUpperCase() === 'DOWN') down.push(eq);
+    });
+    return down;
+}
+
+function renderDownToasts() {
+    const container = getToastContainer();
+    const existing = container.querySelector('.toast-group');
+    const downList = getDownEquipment();
     
-    const msgSpan = document.createElement('span');
-    msgSpan.textContent = message;
-    toast.appendChild(msgSpan);
+    if (downList.length === 0) {
+        if (existing) existing.remove();
+        return;
+    }
     
-    // Add Troubleshoot button for equipment down events
-    if (equipment && type === 'error') {
+    const isUpdate = !!existing;
+    if (existing) existing.remove();
+    
+    const group = document.createElement('div');
+    group.className = 'toast-group' + (downList.length === 1 || toastExpanded ? ' expanded' : '');
+    if (isUpdate) group.style.animation = 'none';
+    
+    const header = document.createElement('div');
+    header.className = 'toast-group-header';
+    header.innerHTML = `<span>⚠️ ${downList.length} Equipment Down</span>${downList.length > 1 ? `<span class="toast-group-count">${group.classList.contains('expanded') ? '▲' : '▼'}</span>` : ''}`;
+    header.onclick = () => {
+        group.classList.toggle('expanded');
+        toastExpanded = group.classList.contains('expanded');
+        const count = header.querySelector('.toast-group-count');
+        if (count) count.textContent = toastExpanded ? '▲' : '▼';
+    };
+    group.appendChild(header);
+    
+    const items = document.createElement('div');
+    items.className = 'toast-group-items';
+    downList.forEach((equipment) => {
+        const item = document.createElement('div');
+        item.className = 'toast-group-item';
+        item.innerHTML = `<span>${equipment.machine || equipment.name}: ${equipment.reason || 'Unknown'}</span>`;
         const btn = document.createElement('button');
         btn.className = 'toast-action-btn';
         btn.textContent = 'Troubleshoot';
-        btn.onclick = (e) => {
-            e.stopPropagation();
-            openTroubleshootModal(equipment);
-            toast.remove();
-        };
-        toast.appendChild(btn);
-    }
+        btn.onclick = (e) => { e.stopPropagation(); showEquipmentModal(equipment.id, true); };
+        item.appendChild(btn);
+        items.appendChild(item);
+    });
+    group.appendChild(items);
+    container.appendChild(group);
+}
+
+function showToast(message, type = 'info', equipment = null) {
+    if (type === 'error' && equipment) return; // Handled by showDownToast
     
-    document.body.appendChild(toast);
+    const container = getToastContainer();
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
     setTimeout(() => toast.remove(), 10000);
 }
 
-// Equipment Troubleshoot Modal
-async function openTroubleshootModal(equipment) {
-    const overlay = document.getElementById('troubleshoot-modal-overlay');
-    const titleEl = document.getElementById('troubleshoot-modal-title');
-    const infoEl = document.getElementById('troubleshoot-equipment-info');
-    const responseEl = document.getElementById('troubleshoot-response');
+// Alarm toast management
+let alarmToastClearTimer = null;
+let alarmToastExpanded = false;
+
+function handleAlarmMessage(data) {
+    const alarmId = data.topic.replace(/\/State$/, '');
     
-    if (!overlay) return;
+    // Parse payload - could be boolean or string
+    const payload = data.payload;
+    const isActive = payload === true || payload === 'true' || payload === 1 || payload === '1';
     
-    // Set title and equipment info
-    titleEl.textContent = `Troubleshoot: ${equipment.machine}`;
-    infoEl.innerHTML = `
-        <div class="equipment-detail"><strong>Machine:</strong> ${equipment.machine}</div>
-        <div class="equipment-detail"><strong>Location:</strong> ${equipment.enterprise} / ${equipment.site}</div>
-        <div class="equipment-detail"><strong>Status:</strong> <span class="status-badge down">${equipment.status || equipment.stateName}</span></div>
-        <div class="equipment-detail"><strong>Reason:</strong> ${equipment.reason || 'Unknown'}</div>
-        ${equipment.reasonCode ? `<div class="equipment-detail"><strong>Code:</strong> ${equipment.reasonCode}</div>` : ''}
-        <div class="equipment-detail"><strong>Duration:</strong> ${equipment.durationFormatted || 'N/A'}</div>
-    `;
+    const previous = state.activeAlarms.get(alarmId);
+    const wasActive = previous?.active;
     
-    // Show loading state
-    responseEl.innerHTML = `<div class="troubleshoot-loading"><div class="loading-spinner"></div><span>Analyzing equipment and querying knowledge base...</span></div>`;
-    overlay.classList.add('active');
+    const alarmData = {
+        id: alarmId,
+        name: data.machine || alarmId.split('/').pop(),
+        topic: data.topic,
+        active: isActive,
+        timestamp: data.timestamp || new Date().toISOString(),
+        enterprise: data.enterprise,
+        site: data.site,
+        area: data.area,
+        equipment: data.device || 'Unknown'
+    };
     
-    // Query agent with equipment context
-    try {
-        const response = await queryTroubleshootAgent(equipment);
-        responseEl.innerHTML = `<div class="troubleshoot-result">${parseMarkdown(response)}</div>`;
-    } catch (err) {
-        responseEl.innerHTML = `<div class="troubleshoot-error">Failed to get troubleshooting guidance: ${err.message}</div>`;
+    state.activeAlarms.set(alarmId, alarmData);
+    
+    // Show toast on state change
+    if (isActive && !wasActive) {
+        showAlarmToast();
+    } else if (!isActive && wasActive) {
+        renderAlarmToasts();
+    }
+    
+    updateAlarmBadge();
+}
+
+function showAlarmToast() {
+    clearTimeout(alarmToastClearTimer);
+    alarmToastClearTimer = setTimeout(() => {
+        const container = getToastContainer();
+        const existing = container.querySelector('.alarm-toast-group');
+        if (existing) existing.remove();
+        alarmToastExpanded = false;
+    }, 30000); // Alarms stay longer than equipment toasts
+    renderAlarmToasts();
+}
+
+function renderAlarmToasts() {
+    const container = getToastContainer();
+    const existing = container.querySelector('.alarm-toast-group');
+    const alarmList = getActiveAlarms();
+    
+    if (alarmList.length === 0) {
+        if (existing) existing.remove();
+        return;
+    }
+    
+    const isUpdate = !!existing;
+    if (existing) existing.remove();
+    
+    const group = document.createElement('div');
+    group.className = 'alarm-toast-group' + (alarmList.length === 1 || alarmToastExpanded ? ' expanded' : '');
+    if (isUpdate) group.style.animation = 'none';
+    
+    const header = document.createElement('div');
+    header.className = 'alarm-toast-header';
+    header.innerHTML = `<span>🚨 ${alarmList.length} Active Alarm${alarmList.length > 1 ? 's' : ''}</span>${alarmList.length > 1 ? `<span class="toast-group-count">${group.classList.contains('expanded') ? '▲' : '▼'}</span>` : ''}`;
+    header.onclick = () => {
+        group.classList.toggle('expanded');
+        alarmToastExpanded = group.classList.contains('expanded');
+        const count = header.querySelector('.toast-group-count');
+        if (count) count.textContent = alarmToastExpanded ? '▲' : '▼';
+    };
+    group.appendChild(header);
+    
+    const items = document.createElement('div');
+    items.className = 'alarm-toast-items';
+    alarmList.forEach((alarm) => {
+        const item = document.createElement('div');
+        item.className = 'alarm-toast-item';
+        item.innerHTML = `<span>${alarm.name}</span><small>${alarm.equipment}</small>`;
+        const btn = document.createElement('button');
+        btn.className = 'alarm-action-btn';
+        btn.textContent = 'Analyze';
+        btn.onclick = (e) => { e.stopPropagation(); showAlarmModal(alarm.id); };
+        item.appendChild(btn);
+        items.appendChild(item);
+    });
+    group.appendChild(items);
+    container.appendChild(group);
+}
+
+function updateAlarmBadge() {
+    const badge = document.getElementById('alarm-badge');
+    const card = document.getElementById('alarm-card');
+    const countEl = document.getElementById('alarm-count');
+    const listEl = document.getElementById('alarm-list');
+    
+    const alarms = getActiveAlarms();
+    const count = alarms.length;
+    
+    if (badge) {
+        badge.textContent = `🚨 ${count}`;
+        badge.style.display = count > 0 ? 'flex' : 'none';
+    }
+    
+    if (card) {
+        card.style.display = count > 0 ? 'block' : 'none';
+        if (countEl) countEl.textContent = count;
+        if (listEl) {
+            listEl.innerHTML = alarms.slice(0, 3).map(a => 
+                `<div class="alarm-item" onclick="showAlarmModal('${a.id}')">${a.name}</div>`
+            ).join('') + (count > 3 ? `<div class="alarm-more">+${count - 3} more</div>` : '');
+        }
     }
 }
 
-function closeTroubleshootModal() {
-    const overlay = document.getElementById('troubleshoot-modal-overlay');
-    if (overlay) overlay.classList.remove('active');
+function showAlarmModal(alarmId) {
+    const alarm = state.activeAlarms.get(alarmId);
+    if (!alarm) return;
+    
+    const modal = document.getElementById('alarm-modal-overlay');
+    if (!modal) return;
+    
+    document.getElementById('alarm-modal-title').textContent = alarm.name;
+    document.getElementById('alarm-modal-content').innerHTML = `
+        <div class="alarm-status ${alarm.active ? 'active' : 'cleared'}">${alarm.active ? '🔴 ACTIVE' : '✅ CLEARED'}</div>
+        <div class="alarm-meta">
+            <div><strong>Enterprise:</strong> ${alarm.enterprise}</div>
+            <div><strong>Area:</strong> ${alarm.area}</div>
+            <div><strong>Equipment:</strong> ${alarm.equipment}</div>
+            <div><strong>Since:</strong> ${new Date(alarm.timestamp).toLocaleString()}</div>
+        </div>
+        <button class="modal-troubleshoot-btn" onclick="analyzeAlarm('${alarmId}')">🤖 AI Analysis</button>
+        <div id="alarm-analysis-result" class="alarm-analysis-result"></div>
+    `;
+    
+    modal.classList.add('active');
+}
+
+function closeAlarmModal() {
+    const modal = document.getElementById('alarm-modal-overlay');
+    if (modal) modal.classList.remove('active');
+}
+
+async function analyzeAlarm(alarmId) {
+    const alarm = state.activeAlarms.get(alarmId);
+    if (!alarm) return;
+    
+    const resultEl = document.getElementById('alarm-analysis-result');
+    if (!resultEl) return;
+    
+    resultEl.innerHTML = '<div class="loading">Analyzing alarm...</div>';
+    
+    try {
+        const response = await fetch('/api/agent/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: `Analyze this industrial alarm and provide troubleshooting steps: "${alarm.name}" on equipment "${alarm.equipment}" in area "${alarm.area}". What are the likely causes and recommended actions?`
+            })
+        });
+        
+        const data = await response.json();
+        resultEl.innerHTML = `<div class="analysis-content">${marked.parse(data.response || data.answer || 'No analysis available')}</div>`;
+    } catch (err) {
+        resultEl.innerHTML = `<div class="error">Analysis failed: ${err.message}</div>`;
+    }
+}
+
+// Energy monitoring
+function handleEnergyMessage(data) {
+    // Parse power value from payload
+    let value = 0;
+    try {
+        const parsed = typeof data.payload === 'string' ? JSON.parse(data.payload) : data.payload;
+        value = parsed.value || 0;
+    } catch { value = parseFloat(data.payload) || 0; }
+
+    const topic = data.topic || '';
+    const metric = data.metric || topic.split('/').pop() || '';
+    const enterprise = data.enterprise || 'Unknown';
+    const site = data.site || data.area || 'Unknown';
+    const equipment = data.equipment || topic.split('/').slice(3, 5).join('/') || 'Unknown';
+    
+    // Categorize by metric type
+    let category = 'other';
+    if (metric.match(/kW_value|_kW$|^kW$/i) && !metric.includes('kWh')) category = 'kw';
+    else if (metric.includes('kWh')) category = 'kwh';
+    else if (metric.match(/Power_W|TruePower|ApparentPower/i)) category = 'watts';
+
+    const key = `${enterprise}_${site}_${equipment}_${metric}`;
+    state.energyReadings.set(key, { 
+        enterprise,
+        site,
+        equipment, 
+        metric,
+        category,
+        value, 
+        timestamp: Date.now() 
+    });
+    updateEnergyCard();
+}
+
+function updateEnergyCard() {
+    const container = document.getElementById('energy-enterprises');
+    if (!container) return;
+
+    // Group by enterprise
+    const byEnterprise = new Map();
+    state.energyReadings.forEach(r => {
+        if (!byEnterprise.has(r.enterprise)) {
+            byEnterprise.set(r.enterprise, { kw: 0, kwh: 0, equipment: new Map(), site: r.site });
+        }
+        const ent = byEnterprise.get(r.enterprise);
+        if (r.category === 'kw') ent.kw += r.value;
+        else if (r.category === 'kwh') ent.kwh = Math.max(ent.kwh, r.value);
+        else if (r.category === 'watts') {
+            const equip = r.equipment.split('/').pop() || r.equipment;
+            ent.equipment.set(equip, (ent.equipment.get(equip) || 0) + r.value);
+        }
+    });
+
+    if (byEnterprise.size === 0) {
+        container.innerHTML = '<div class="energy-empty">Waiting for energy data...</div>';
+        return;
+    }
+
+    container.innerHTML = Array.from(byEnterprise.entries()).map(([enterprise, data]) => {
+        const topEquip = Array.from(data.equipment.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([name, watts]) => `<div class="energy-equip-row"><span>${name}</span><span>${(watts/1000).toFixed(1)} kW</span></div>`)
+            .join('');
+        
+        return `<div class="energy-enterprise-block">
+            <div class="energy-enterprise-header">
+                <span class="energy-ent-name">${enterprise}</span>
+                <span class="energy-ent-site">${data.site}</span>
+            </div>
+            <div class="energy-metrics">
+                <div class="energy-metric">
+                    <span class="energy-metric-value">${data.kw > 0 ? data.kw.toFixed(1) : '--'}</span>
+                    <span class="energy-metric-label">kW</span>
+                </div>
+                <div class="energy-metric">
+                    <span class="energy-metric-value">${data.kwh > 0 ? (data.kwh/1000).toFixed(1) : '--'}</span>
+                    <span class="energy-metric-label">MWh</span>
+                </div>
+            </div>
+            ${topEquip ? `<div class="energy-equipment-list">${topEquip}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+async function fetchEquipmentHistory(equipment, targetId = 'equipment-history') {
+    const historyEl = document.getElementById(targetId);
+    if (!historyEl) return;
+    
+    const machine = equipment.machine || equipment.name;
+    const device = equipment.device;
+    if (!equipment.enterprise || !equipment.site || !machine) {
+        historyEl.innerHTML = `<small>History unavailable</small>`;
+        return;
+    }
+    
+    try {
+        let url = `/api/equipment/${encodeURIComponent(equipment.enterprise)}/${encodeURIComponent(equipment.site)}/${encodeURIComponent(machine)}/history?minutes=15`;
+        if (device) url += `&device=${encodeURIComponent(device)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data.error) {
+            historyEl.innerHTML = `<small>${data.error}</small>`;
+            return;
+        }
+        
+        let html = '';
+        
+        // Metrics section - key performance indicators
+        if (data.metrics && Object.keys(data.metrics).length > 0) {
+            const m = data.metrics;
+            html += `<div class="metrics-grid">`;
+            if (m.oee !== undefined) html += `<div class="metric"><span class="metric-value">${(m.oee * 100).toFixed(1)}%</span><span class="metric-label">OEE</span></div>`;
+            if (m.availability !== undefined) html += `<div class="metric"><span class="metric-value">${(m.availability * 100).toFixed(1)}%</span><span class="metric-label">Availability</span></div>`;
+            if (m.performance !== undefined) html += `<div class="metric"><span class="metric-value">${(m.performance * 100).toFixed(1)}%</span><span class="metric-label">Performance</span></div>`;
+            if (m.quality !== undefined) html += `<div class="metric"><span class="metric-value">${(m.quality * 100).toFixed(1)}%</span><span class="metric-label">Quality</span></div>`;
+            html += `</div>`;
+            
+            // Production counts
+            const counts = ['countinfeed', 'countoutfeed', 'countdefect'].filter(k => m[k] !== undefined);
+            if (counts.length > 0) {
+                html += `<div class="counts-row">`;
+                if (m.countinfeed !== undefined) html += `<span>In: ${m.countinfeed.toLocaleString()}</span>`;
+                if (m.countoutfeed !== undefined) html += `<span>Out: ${m.countoutfeed.toLocaleString()}</span>`;
+                if (m.countdefect !== undefined) html += `<span class="defect">Defects: ${m.countdefect.toLocaleString()}</span>`;
+                html += `</div>`;
+            }
+        }
+        
+        // Merge local history with server history
+        const equipmentId = equipment.id || `${equipment.enterprise}/${equipment.site}/${equipment.machine}/${equipment.device}`;
+        const localHistory = localStateHistory.get(equipmentId) || [];
+        let allStateChanges = [...(data.stateChanges || [])];
+        
+        // Add local changes that are newer than server data
+        const serverLatest = allStateChanges[0]?.time ? new Date(allStateChanges[0].time).getTime() : 0;
+        for (const local of localHistory) {
+            if (new Date(local.time).getTime() > serverLatest) {
+                allStateChanges.unshift(local);
+            }
+        }
+        
+        // State changes timeline
+        if (allStateChanges.length > 0) {
+            html += `<div class="state-timeline"><strong>State History</strong>`;
+            for (const s of allStateChanges.slice(0, 10)) {
+                const timeStr = new Date(s.time).toLocaleTimeString('en-US', {
+                    hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3
+                });
+                html += `<div class="state-entry ${s.status}">
+                    <span class="state-time">${timeStr}</span>
+                    <span class="state-status">${s.status.toUpperCase()}</span>
+                    <span class="state-reason">${s.reason}</span>
+                </div>`;
+            }
+            html += `</div>`;
+        }
+        
+        historyEl.innerHTML = html || `<small>No recent history</small>`;
+    } catch (err) {
+        console.error('History fetch error:', err);
+        historyEl.innerHTML = `<small>History unavailable</small>`;
+    }
 }
 
 async function queryTroubleshootAgent(equipment) {
@@ -912,13 +1357,9 @@ function updateEquipmentStateGrid() {
         return;
     }
 
-    // Sort: DOWN first, then IDLE, then RUNNING (most critical on top)
-    const sortOrder = { 'DOWN': 0, 'IDLE': 1, 'RUNNING': 2 };
-    states.sort((a, b) => {
-        const orderA = sortOrder[a.state.toUpperCase()] ?? 3;
-        const orderB = sortOrder[b.state.toUpperCase()] ?? 3;
-        return orderA - orderB;
-    });
+    // Sort: down first, then idle, then running, then unknown
+    const sortOrder = { 'down': 0, 'idle': 1, 'running': 2, 'unknown': 3 };
+    states.sort((a, b) => (sortOrder[a.status] ?? 4) - (sortOrder[b.status] ?? 4));
 
     // Count states
     let runningCount = 0;
@@ -926,10 +1367,10 @@ function updateEquipmentStateGrid() {
     let downCount = 0;
 
     states.forEach(equipment => {
-        const state = equipment.state.toUpperCase();
-        if (state === 'RUNNING') runningCount++;
-        else if (state === 'IDLE') idleCount++;
-        else if (state === 'DOWN') downCount++;
+        const status = equipment.status;
+        if (status === 'running') runningCount++;
+        else if (status === 'idle') idleCount++;
+        else if (status === 'down') downCount++;
     });
 
     // Update summary counts
@@ -939,16 +1380,187 @@ function updateEquipmentStateGrid() {
 
     // Render equipment cards
     grid.innerHTML = states.map(equipment => {
-        const stateClass = (equipment.stateName || equipment.state || '').toString().toLowerCase();
+        const stateClass = (equipment.status || 'unknown').toLowerCase();
         const reason = equipment.reason ? `<div class="equipment-reason" title="${equipment.reason}">${equipment.reason}</div>` : '';
+        const displayName = equipment.device || equipment.machine || equipment.name;
+        const subtitle = equipment.machine && equipment.device ? equipment.machine : '';
         return `
-            <div class="equipment-card ${stateClass}">
-                <div class="equipment-name" title="${equipment.name || equipment.machine}">${equipment.name || equipment.machine}</div>
-                <div class="equipment-state">${equipment.stateName || equipment.state}</div>
+            <div class="equipment-card ${stateClass}" onclick="showEquipmentModal('${equipment.id}')">
+                <div class="equipment-name" title="${displayName}">${displayName}</div>
+                ${subtitle ? `<div class="equipment-subtitle">${subtitle}</div>` : ''}
+                <div class="equipment-state">${(equipment.status || 'unknown').toUpperCase()}</div>
                 ${reason}
             </div>
         `;
     }).join('');
+}
+
+let equipmentModalInterval = null;
+let currentEquipmentModalId = null;
+
+function showEquipmentModal(equipmentId, autoTroubleshoot = false) {
+    const equipment = state.equipmentStates.get(equipmentId);
+    if (!equipment) return;
+    
+    const modal = document.getElementById('equipment-modal-overlay');
+    if (!modal) return;
+    
+    currentEquipmentModalId = equipmentId;
+    
+    const idParts = equipmentId.split('/');
+    // Use device as the equipment name, machine as the line/parent
+    const deviceName = equipment.device || equipment.machine || equipment.name || idParts[idParts.length - 1] || 'Unknown';
+    const machineName = equipment.machine || (idParts.length >= 4 ? idParts[2] : null);
+    const statusClass = (equipment.status || 'unknown').toLowerCase();
+    const isDown = statusClass === 'down';
+    
+    // Build hierarchy: Enterprise > Site > [Machine >] Device
+    let hierarchyHtml = `
+        <span class="hierarchy-item">${equipment.enterprise || idParts[0] || 'Unknown'}</span>
+        <span class="hierarchy-sep">›</span>
+        <span class="hierarchy-item">${equipment.site || idParts[1] || 'Unknown'}</span>`;
+    if (machineName) {
+        hierarchyHtml += `
+        <span class="hierarchy-sep">›</span>
+        <span class="hierarchy-item">${machineName}</span>`;
+    }
+    hierarchyHtml += `
+        <span class="hierarchy-sep">›</span>
+        <span class="hierarchy-item current">${deviceName}</span>`;
+    
+    document.getElementById('equipment-modal-title').innerHTML = hierarchyHtml;
+    
+    document.getElementById('equipment-modal-content').innerHTML = `
+        ${isDown ? '<button class="modal-troubleshoot-btn" onclick="triggerTroubleshootFromModal()">Troubleshoot</button>' : ''}
+        <div class="equipment-first-seen">First seen: ${equipment.firstSeen ? new Date(equipment.firstSeen).toLocaleTimeString() : 'just now'}</div>
+        <div class="equipment-status-row">
+            <span id="modal-status-badge" class="status-badge ${statusClass}">${(equipment.status || 'unknown').toUpperCase()}</span>
+            <span id="modal-status-reason" class="status-reason">${equipment.reason || ''}</span>
+        </div>
+        <div class="equipment-meta">
+            <div><strong>In state for:</strong> <span id="modal-state-duration">${equipment.stateChangedAt ? formatStateDuration(Date.now() - equipment.stateChangedAt) : 'N/A'}</span></div>
+        </div>
+        <div id="equipment-modal-history" class="equipment-history"></div>
+        <div id="equipment-modal-troubleshoot" class="equipment-troubleshoot-result"></div>
+    `;
+    
+    modal.classList.add('active');
+    
+    // Fetch history - equipment already has machine and device
+    fetchEquipmentHistory(equipment, 'equipment-modal-history');
+    
+    // Live update only dynamic elements
+    clearInterval(equipmentModalInterval);
+    equipmentModalInterval = setInterval(() => updateEquipmentModalDynamic(), 1000);
+    
+    // Auto-trigger troubleshoot if requested
+    if (autoTroubleshoot && isDown) {
+        triggerTroubleshootFromModal();
+    }
+}
+
+async function triggerTroubleshootFromModal() {
+    if (!currentEquipmentModalId) return;
+    const equipment = state.equipmentStates.get(currentEquipmentModalId);
+    if (!equipment) return;
+    
+    const idParts = currentEquipmentModalId.split('/');
+    const machineName = equipment.machine || equipment.name || (idParts.length >= 3 ? idParts[2] : idParts[idParts.length - 1]);
+    const troubleshootEl = document.getElementById('equipment-modal-troubleshoot');
+    const troubleshootBtn = document.querySelector('.modal-troubleshoot-btn');
+    
+    if (!troubleshootEl) return;
+    
+    // Disable button while analyzing
+    if (troubleshootBtn) troubleshootBtn.disabled = true;
+    
+    const analysisTime = new Date();
+    const analysisState = equipment.status || 'DOWN';
+    troubleshootEl.innerHTML = `
+        <details class="analysis-section" open>
+            <summary class="analysis-header"><span class="analysis-time">State: ${analysisState} at ${analysisTime.toLocaleTimeString()}</span></summary>
+            <div class="analysis-content"><div class="troubleshoot-loading"><div class="loading-spinner"></div><span>Analyzing equipment...</span></div></div>
+        </details>`;
+    troubleshootEl.dataset.analysisState = analysisState;
+    
+    // Capture full state snapshot from UI
+    const context = {
+        machine: machineName,
+        enterprise: equipment.enterprise,
+        site: equipment.site,
+        status: equipment.status,
+        reason: equipment.reason,
+        stateChangedAt: equipment.stateChangedAt ? new Date(equipment.stateChangedAt).toISOString() : null,
+        stateDuration: equipment.stateChangedAt ? formatStateDuration(Date.now() - equipment.stateChangedAt) : null,
+        analysisRequestedAt: analysisTime.toISOString()
+    };
+    
+    try {
+        const response = await queryTroubleshootAgent(context);
+        const contentEl = troubleshootEl.querySelector('.analysis-content');
+        if (contentEl) {
+            contentEl.innerHTML = `<div class="troubleshoot-result">${parseMarkdown(response)}</div>`;
+        }
+    } catch (err) {
+        const contentEl = troubleshootEl.querySelector('.analysis-content');
+        if (contentEl) {
+            contentEl.innerHTML = `<div class="troubleshoot-error">Analysis failed: ${err.message}</div>`;
+        }
+    } finally {
+        // Re-enable button if still down
+        const currentEquipment = state.equipmentStates.get(currentEquipmentModalId);
+        const btn = document.querySelector('.modal-troubleshoot-btn');
+        if (btn && currentEquipment?.status?.toUpperCase() === 'DOWN') {
+            btn.disabled = false;
+        }
+    }
+}
+
+function updateEquipmentModalDynamic() {
+    if (!currentEquipmentModalId) return;
+    const equipment = state.equipmentStates.get(currentEquipmentModalId);
+    if (!equipment) return;
+    
+    const statusClass = (equipment.status || 'unknown').toLowerCase();
+    const badge = document.getElementById('modal-status-badge');
+    const reason = document.getElementById('modal-status-reason');
+    const code = document.getElementById('modal-status-code');
+    const duration = document.getElementById('modal-state-duration');
+    const troubleshootBtn = document.querySelector('.modal-troubleshoot-btn');
+    
+    if (badge) {
+        badge.className = `status-badge ${statusClass}`;
+        badge.textContent = (equipment.status || 'unknown').toUpperCase();
+    }
+    if (reason) reason.textContent = equipment.reason || '';
+    if (duration) duration.textContent = equipment.stateChangedAt ? formatStateDuration(Date.now() - equipment.stateChangedAt) : 'N/A';
+    
+    // Show/hide troubleshoot button based on state
+    const isDown = statusClass === 'down';
+    if (troubleshootBtn) {
+        troubleshootBtn.style.display = isDown ? '' : 'none';
+    } else if (isDown) {
+        // Add button if it doesn't exist and equipment is now down
+        const content = document.getElementById('equipment-modal-content');
+        if (content && !content.querySelector('.modal-troubleshoot-btn')) {
+            content.insertAdjacentHTML('afterbegin', '<button class="modal-troubleshoot-btn" onclick="triggerTroubleshootFromModal()">Troubleshoot</button>');
+        }
+    }
+    
+    // Mark analysis as stale if state changed
+    const troubleshootEl = document.getElementById('equipment-modal-troubleshoot');
+    if (troubleshootEl && troubleshootEl.dataset.analysisState) {
+        const analysisSection = troubleshootEl.querySelector('.analysis-section');
+        if (analysisSection && troubleshootEl.dataset.analysisState !== (equipment.status || 'UNKNOWN')) {
+            analysisSection.classList.add('analysis-stale');
+        }
+    }
+}
+
+function closeEquipmentModal() {
+    clearInterval(equipmentModalInterval);
+    currentEquipmentModalId = null;
+    document.getElementById('equipment-modal-overlay')?.classList.remove('active');
 }
 
 // Fetch line OEE from API
@@ -1077,18 +1689,145 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Map backend type to filter category
+function getFilterType(message) {
+    const backendType = message.type || 'unknown';
+    const typeMap = {
+        // Production - OEE, counts, quality, KPIs
+        'oee': 'production',
+        'production_metric': 'production',
+        // Equipment - state, status, config
+        'equipment_state': 'equipment',
+        'state_metadata': 'equipment',
+        'equipment_metadata': 'equipment',
+        'equipment_config': 'equipment',
+        // Process - sensor readings
+        'process_variable': 'process',
+        'motion': 'process',
+        // Energy
+        'energy': 'energy',
+        // Alarms
+        'alarm': 'alarm',
+        // Telemetry - raw edge data
+        'telemetry': 'telemetry',
+        'sparkplug': 'telemetry',
+        'sparkplug_state': 'telemetry',
+        'io_point': 'telemetry',
+        // Other
+        'infrastructure': 'other',
+        'unknown': 'other'
+    };
+    return typeMap[backendType] || 'other';
+}
+
+// Format ISA-95 hierarchy with color coding
+function formatHierarchy(message) {
+    const parts = [];
+    if (message.enterprise) parts.push(`<span class="hier-enterprise">${escapeHtml(message.enterprise)}</span>`);
+    if (message.site) parts.push(`<span class="hier-site">${escapeHtml(message.site)}</span>`);
+    if (message.area) parts.push(`<span class="hier-area">${escapeHtml(message.area)}</span>`);
+    if (message.machine) parts.push(`<span class="hier-machine">${escapeHtml(message.machine)}</span>`);
+    if (message.device) parts.push(`<span class="hier-device">${escapeHtml(message.device)}</span>`);
+    if (message.metric) parts.push(`<span class="hier-metric">${escapeHtml(message.metric)}</span>`);
+    return parts.length > 0 ? parts.join('<span class="hier-sep">›</span>') : escapeHtml(message.topic);
+}
+
+// Message frequency tracking
+const messageFrequency = new Map(); // topic -> { count, lastSeen, avgInterval, intervals[] }
+
+function trackMessageFrequency(topic) {
+    const now = Date.now();
+    let freq = messageFrequency.get(topic);
+    
+    if (!freq) {
+        freq = { count: 0, lastSeen: now, avgInterval: 0, intervals: [] };
+        messageFrequency.set(topic, freq);
+    }
+    
+    if (freq.lastSeen) {
+        const interval = now - freq.lastSeen;
+        freq.intervals.push(interval);
+        if (freq.intervals.length > 10) freq.intervals.shift(); // Keep last 10
+        freq.avgInterval = freq.intervals.reduce((a, b) => a + b, 0) / freq.intervals.length;
+    }
+    
+    freq.count++;
+    freq.lastSeen = now;
+    return freq;
+}
+
+function getFrequencyIndicator(topic) {
+    const freq = messageFrequency.get(topic);
+    if (!freq || freq.intervals.length < 3) return '';
+    
+    const sinceLastMs = Date.now() - freq.lastSeen;
+    const ratio = sinceLastMs / freq.avgInterval;
+    
+    if (ratio > 3) return '<span class="freq-warning" title="Delayed">⚠️</span>';
+    if (ratio < 0.3) return '<span class="freq-fast" title="Faster than usual">⚡</span>';
+    return '';
+}
+
+// Render messages from state.messages based on current filter
+function renderMessageStream() {
+    const stream = document.getElementById('mqtt-stream');
+    if (!stream) return;
+
+    const filtered = state.messages.filter(m => 
+        state.eventFilter === 'all' || getFilterType(m) === state.eventFilter
+    ).slice(-50); // Last 50 matching
+
+    if (filtered.length === 0) {
+        const filterName = state.eventFilter === 'all' ? 'events' : state.eventFilter;
+        stream.innerHTML = `<div class="stream-empty">
+            <div class="stream-empty-icon">📡</div>
+            <div>No ${filterName} received yet</div>
+            <div class="stream-empty-hint">Waiting for data...</div>
+        </div>`;
+        return;
+    }
+
+    stream.innerHTML = filtered.map(message => {
+        const timestamp = new Date(message.timestamp).toLocaleTimeString('en-US', {
+            hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3
+        });
+        const escapedPayload = typeof message.payload === 'object'
+            ? escapeHtml(JSON.stringify(message.payload))
+            : escapeHtml(String(message.payload));
+        const filterType = getFilterType(message);
+        const rawType = message.type || 'unknown';
+        const hierarchy = formatHierarchy(message);
+        const freqIndicator = getFrequencyIndicator(message.topic);
+        return `<div class="stream-line" data-event-type="${filterType}">
+            <span class="stream-timestamp">[${timestamp}]</span>
+            <span class="stream-type-badge type-${filterType}">${rawType}</span>
+            ${freqIndicator}
+            <span class="stream-hierarchy">${hierarchy}</span>
+            <span class="stream-value">${escapedPayload}</span>
+        </div>`;
+    }).join('');
+
+    stream.scrollTop = stream.scrollHeight;
+}
+
 // Add MQTT message to the stream display
 function addMQTTMessageToStream(message) {
-    // Don't add messages when stream is paused
+    // Don't render when stream is paused
     if (state.streamPaused) return;
+
+    const filterType = getFilterType(message);
+
+    // Skip rendering if doesn't match current filter
+    if (state.eventFilter !== 'all' && filterType !== state.eventFilter) {
+        return;
+    }
 
     const stream = document.getElementById('mqtt-stream');
     if (!stream) return;
 
-    // Clear "waiting" message on first real message
-    if (state.stats.messageCount === 1) {
-        stream.innerHTML = '';
-    }
+    // Clear empty state when first matching message arrives
+    const emptyState = stream.querySelector('.stream-empty');
+    if (emptyState) emptyState.remove();
 
     const timestamp = new Date(message.timestamp).toLocaleTimeString('en-US', {
         hour12: false,
@@ -1098,43 +1837,58 @@ function addMQTTMessageToStream(message) {
         fractionalSecondDigits: 3
     });
 
+    // Track frequency
+    trackMessageFrequency(message.topic);
+    const freqIndicator = getFrequencyIndicator(message.topic);
+    const rawType = message.type || 'unknown';
+    const hierarchy = formatHierarchy(message);
+
+    // Format payload - expand nested objects into key summaries
+    let payloadDisplay = '';
+    try {
+        const payload = typeof message.payload === 'string' ? JSON.parse(message.payload) : message.payload;
+        if (typeof payload === 'object' && payload !== null) {
+            const keys = Object.keys(payload);
+            if (keys.length <= 5) {
+                // Show key=value pairs for small objects
+                payloadDisplay = keys.map(k => {
+                    const v = payload[k];
+                    if (typeof v === 'object') return `${k}:{...}`;
+                    return `${k}=${String(v).substring(0, 30)}`;
+                }).join(' ');
+            } else {
+                // Show key count for large objects
+                payloadDisplay = `{${keys.length} fields: ${keys.slice(0, 4).join(', ')}...}`;
+            }
+        } else {
+            payloadDisplay = String(payload).substring(0, 100);
+        }
+    } catch {
+        payloadDisplay = String(message.payload).substring(0, 100);
+    }
+
     const line = document.createElement('div');
     line.className = 'stream-line';
-
-    // Add data attributes for filtering
-    const topic = message.topic.toLowerCase();
-    let eventType = 'other';
-    if (topic.includes('oee')) eventType = 'oee';
-    else if (topic.includes('state')) eventType = 'state';
-    else if (topic.includes('alarm')) eventType = 'alarm';
-
-    line.setAttribute('data-event-type', eventType);
-
-    // Use escapeHtml to prevent XSS attacks on user-controlled content
-    const escapedTopic = escapeHtml(message.topic);
-    const escapedPayload = typeof message.payload === 'object'
-        ? escapeHtml(JSON.stringify(message.payload))
-        : escapeHtml(String(message.payload));
+    line.setAttribute('data-event-type', filterType);
 
     line.innerHTML = `
         <span class="stream-timestamp">[${timestamp}]</span>
-        <span class="stream-topic">${escapedTopic}</span>
-        <span class="stream-value">${escapedPayload}</span>
+        <span class="stream-type-badge type-${filterType}">${rawType}</span>
+        ${freqIndicator}
+        <span class="stream-hierarchy">${hierarchy}</span>
+        <span class="stream-value">${escapeHtml(payloadDisplay)}</span>
     `;
 
     // Check if user is at bottom before adding new message
-    // Use tighter threshold: within 10px = user is at bottom
     const isAtBottom = stream.scrollHeight - stream.scrollTop <= stream.clientHeight + 10;
 
     stream.appendChild(line);
 
     // Only trim old messages when user is at bottom (not reading history)
-    // Allow buffer to grow to 200 while scrolled up, trim to 50 when back at bottom
     const maxWhileScrolled = 200;
     const normalMax = 50;
 
     if (isAtBottom) {
-        // User is at bottom - trim to normal size and auto-scroll
         while (stream.children.length > normalMax) {
             stream.removeChild(stream.firstChild);
         }
@@ -1206,7 +1960,8 @@ function addClaudeInsight(insight) {
     insightEl.style.borderLeftColor = severityColor;
 
     // Support both old format (insight) and new format (summary)
-    const insightText = insight.summary || insight.insight || 'No insight available';
+    let insightText = insight.summary || insight.insight || 'No insight available';
+    if (typeof insightText === 'object') insightText = JSON.stringify(insightText);
     const dataInfo = insight.dataPoints ? `${insight.dataPoints} data points` : `${insight.messagesAnalyzed || 0} messages`;
 
     // Show anomaly count in insight if present
@@ -1836,19 +2591,8 @@ function filterEvents(eventType, clickedTab) {
     });
     if (clickedTab) clickedTab.classList.add('active');
 
-    // Show/hide events based on filter
-    const stream = document.getElementById('mqtt-stream');
-    if (!stream) return;
-
-    const lines = stream.querySelectorAll('.stream-line');
-    lines.forEach(line => {
-        const lineEventType = line.getAttribute('data-event-type');
-        if (eventType === 'all' || lineEventType === eventType) {
-            line.style.display = '';
-        } else {
-            line.style.display = 'none';
-        }
-    });
+    // Re-render stream from state.messages
+    renderMessageStream();
 }
 
 // Toggle stream pause/resume
@@ -1927,9 +2671,20 @@ const AGENT_ICON = '<svg class="avatar" viewBox="0 0 24 24"><path d="M12 2C6.48 
 const CHAT_WELCOME = `
 <div class="chat-welcome">
     <svg class="chat-welcome-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-    <h3>EdgeMind Assistant</h3>
+    <h3>Edge Mind Assistant</h3>
     <p>Ask me about factory metrics, OEE performance, production lines, or anomaly detection.</p>
+    <div class="suggested-questions">
+        <button class="suggested-question" onclick="handleSuggestedQuestion('What is impacting Enterprise B\\'s OEE?')">What is impacting Enterprise B's OEE?</button>
+        <button class="suggested-question" onclick="handleSuggestedQuestion('Which equipment has been down the longest?')">Which equipment has been down the longest?</button>
+        <button class="suggested-question" onclick="handleSuggestedQuestion('Where is waste coming from in Enterprise A?')">Where is waste coming from in Enterprise A?</button>
+        <button class="suggested-question" onclick="handleSuggestedQuestion('What is the status of Enterprise C batches?')">What is the status of Enterprise C batches?</button>
+    </div>
 </div>`;
+
+function handleSuggestedQuestion(question) {
+    document.getElementById('chat-input').value = question;
+    sendChat();
+}
 
 function parseMarkdown(text) {
     return marked.parse(text);

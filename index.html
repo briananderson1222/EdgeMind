@@ -12,6 +12,7 @@
 </head>
 <body>
     <div class="live-badge" id="live-badge">● DISCONNECTED</div>
+    <div class="alarm-badge" id="alarm-badge" style="display: none;" onclick="showAlarmModal(getActiveAlarms()[0]?.id)">🚨 0</div>
 
     <div class="container">
         <header>
@@ -75,14 +76,34 @@
                 <div class="metric-change negative">AI Analysis Active</div>
             </div>
 
+            <!-- Active Alarms Card -->
+            <div class="card metrics alarm-card" id="alarm-card" style="display: none;">
+                <div class="card-title">Active Alarms</div>
+                <div class="metric-value alarm-value" id="alarm-count">0</div>
+                <div class="alarm-list" id="alarm-list"></div>
+            </div>
+
+            <!-- Energy Monitoring Card -->
+            <div class="card energy-card-full">
+                <div class="card-title">⚡ Power Monitoring</div>
+                <div class="energy-enterprises" id="energy-enterprises">
+                    <div class="energy-empty">Waiting for energy data...</div>
+                </div>
+            </div>
+
             <!-- Factory Events -->
             <div class="card live-stream">
                 <div class="card-title">Factory Events</div>
-                <div class="event-filter-tabs">
-                    <button class="event-tab active" onclick="filterEvents('all', this)">All</button>
-                    <button class="event-tab" onclick="filterEvents('oee', this)">OEE</button>
-                    <button class="event-tab" onclick="filterEvents('state', this)">State</button>
-                    <button class="event-tab" onclick="filterEvents('alarm', this)">Alarms</button>
+                <div class="event-filter-row">
+                    <div class="event-filter-tabs">
+                        <button class="event-tab filter-all active" onclick="filterEvents('all', this)">All</button>
+                        <button class="event-tab filter-production" onclick="filterEvents('production', this)">Production</button>
+                        <button class="event-tab filter-equipment" onclick="filterEvents('equipment', this)">Equipment</button>
+                        <button class="event-tab filter-process" onclick="filterEvents('process', this)">Process</button>
+                        <button class="event-tab filter-energy" onclick="filterEvents('energy', this)">Energy</button>
+                        <button class="event-tab filter-alarm" onclick="filterEvents('alarm', this)">Alarms</button>
+                        <button class="event-tab filter-telemetry" onclick="filterEvents('telemetry', this)">Telemetry</button>
+                    </div>
                     <button class="event-tab pause-btn" id="stream-pause-btn" onclick="toggleStreamPause()">
                         <span id="pause-btn-text">⏸ Pause</span>
                     </button>
@@ -187,6 +208,7 @@
                     <div class="state-count running"><span id="state-running">0</span> Running</div>
                     <div class="state-count idle"><span id="state-idle">0</span> Idle</div>
                     <div class="state-count down"><span id="state-down">0</span> Down</div>
+                    <div class="state-count unknown"><span id="state-unknown">0</span> Unknown</div>
                 </div>
                 <div class="state-grid" id="equipment-state-grid">
                     <div class="heatmap-loading">Loading equipment states...</div>
@@ -289,23 +311,25 @@
             </div>
         </div>
     </div>
-
-    <!-- Equipment Troubleshoot Modal -->
-    <div class="modal-overlay" id="troubleshoot-modal-overlay">
-        <div class="troubleshoot-modal">
+    <!-- Equipment Info Modal -->
+    <div class="modal-overlay" id="equipment-modal-overlay" onclick="if(event.target===this)closeEquipmentModal()">
+        <div class="equipment-modal">
             <div class="modal-header">
-                <div class="modal-title" id="troubleshoot-modal-title">Equipment Troubleshoot</div>
-                <button class="modal-close" onclick="closeTroubleshootModal()">×</button>
+                <div class="modal-title" id="equipment-modal-title">Equipment Details</div>
+                <button class="modal-close" onclick="closeEquipmentModal()">×</button>
             </div>
-            <div class="modal-content">
-                <div class="troubleshoot-equipment-info" id="troubleshoot-equipment-info"></div>
-                <div class="troubleshoot-response" id="troubleshoot-response">
-                    <div class="troubleshoot-loading">
-                        <div class="loading-spinner"></div>
-                        <span>Analyzing equipment and querying knowledge base...</span>
-                    </div>
-                </div>
+            <div class="modal-content" id="equipment-modal-content"></div>
+        </div>
+    </div>
+
+    <!-- Alarm Modal -->
+    <div class="modal-overlay" id="alarm-modal-overlay" onclick="if(event.target===this)closeAlarmModal()">
+        <div class="alarm-modal">
+            <div class="modal-header alarm-modal-header">
+                <div class="modal-title" id="alarm-modal-title">Alarm Details</div>
+                <button class="modal-close" onclick="closeAlarmModal()">×</button>
             </div>
+            <div class="modal-content" id="alarm-modal-content"></div>
         </div>
     </div>
 
@@ -386,7 +410,7 @@
     <div class="chat-widget">
         <div class="chat-panel" id="chat-panel">
             <div class="chat-header">
-                <span class="chat-title">EdgeMind Assistant</span>
+                <span class="chat-title">Edge Mind Assistant</span>
                 <button class="chat-close" onclick="toggleChat()">×</button>
             </div>
             <div class="chat-messages" id="chat-messages"></div>

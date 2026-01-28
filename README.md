@@ -160,3 +160,7 @@ This project uses [CLAUDE.md](CLAUDE.md) to provide context for AI-assisted deve
 ---
 
 **INTERNAL USE ONLY** - This repository contains proprietary code and configurations for the ProveIt! Conference 2026 demonstration.
+
+## Development Tools
+
+- [Topic Classifier Debugging Guide](docs/TOPIC_CLASSIFIER_DEBUG.md) - How to identify and fix unclassified MQTT topics

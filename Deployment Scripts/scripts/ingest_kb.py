@@ -12,7 +12,7 @@ except ImportError:
 CHROMA_HOST = os.environ.get("CHROMA_HOST", "localhost")
 CHROMA_PORT = int(os.environ.get("CHROMA_PORT", "8000"))
 COLLECTION_NAME = os.environ.get("KB_COLLECTION", "edgemind_sops")
-KB_PATH = Path(os.environ.get("KB_PATH", Path(__file__).parent.parent.parent.parent.parent / "knowledge-base"))
+KB_PATH = Path(os.environ.get("KB_PATH", "/app/knowledge-base"))
 
 
 def extract_pdf_text(path: Path) -> list[tuple[str, dict]]:
