@@ -249,21 +249,47 @@ mqttClient.on('message', async (topic, message) => {
     if (parts.length >= 3) {
       const enterprise = parts[0];
       const site = parts[1];
-      // Machine could be at different positions depending on structure
-      const machine = parts.length >= 4 ? parts[3] : parts[2];
+
+      // Extract machine name - try multiple strategies
+      let machine = parts.length >= 4 ? parts[3] : parts[2];
+
+      // For Enterprise C ISA-88 equipment, extract equipment ID from measurement name
+      // Measurement names like CHR01_STATE, SUB250_STATE contain the equipment ID
+      const measurementName = parts[parts.length - 1];
+      const equipmentPatterns = ['CHR01', 'SUB250', 'SUM500', 'TFF300', 'UNIT_250', 'UNIT_500'];
+      for (const pattern of equipmentPatterns) {
+        if (measurementName.includes(pattern)) {
+          machine = pattern.replace('UNIT_', 'SUB'); // Normalize UNIT_250 to SUB250
+          break;
+        }
+      }
+
       const equipmentKey = `${enterprise}/${site}/${machine}`;
 
       // Parse state value - support both numeric (1=DOWN, 2=IDLE, 3=RUNNING) and string values
       let stateValue = null;
       let stateInfo = null;
 
-      const numValue = parseInt(payload);
+      // Extract actual value from JSON payloads (Enterprise C sends {"value":"Idle"} format)
+      let actualPayload = payload;
+      if (typeof payload === 'string' && payload.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(payload);
+          if (parsed && typeof parsed === 'object' && 'value' in parsed) {
+            actualPayload = parsed.value;
+          }
+        } catch {
+          // Not valid JSON, use raw payload
+        }
+      }
+
+      const numValue = parseInt(actualPayload);
       if (!isNaN(numValue) && equipmentStateCache.STATE_CODES[numValue]) {
         stateValue = numValue;
         stateInfo = equipmentStateCache.STATE_CODES[numValue];
       } else {
         // Check for string state values
-        const payloadLower = String(payload).toLowerCase();
+        const payloadLower = String(actualPayload).toLowerCase();
         if (payloadLower.includes('down') || payloadLower.includes('stop') || payloadLower.includes('fault') || payloadLower === '1') {
           stateValue = 1;
           stateInfo = equipmentStateCache.STATE_CODES[1];
@@ -1555,6 +1581,28 @@ app.get('/api/waste/breakdown', async (req, res) => {
 });
 
 /**
+ * Parse JSON-encoded MQTT values to extract the actual value field
+ * @param {string|number} rawValue - Raw value from InfluxDB
+ * @returns {string|number|null} Parsed value
+ */
+function parseJsonValue(rawValue) {
+  if (typeof rawValue !== 'string') return rawValue;
+
+  // Try to parse as JSON and extract value field
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (parsed && typeof parsed === 'object' && 'value' in parsed) {
+      // Handle <nil> as null
+      if (parsed.value === '<nil>') return null;
+      return parsed.value;
+    }
+    return rawValue;
+  } catch {
+    return rawValue;
+  }
+}
+
+/**
  * GET /api/batch/status - ISA-88 batch process status for Enterprise C
  * Returns current status of batch equipment (CHR01, SUB250, SUM500, TFF300)
  */
@@ -1619,15 +1667,17 @@ app.get('/api/batch/status', async (req, res) => {
 
           // Categorize measurement by type
           const measurement = o._measurement.toLowerCase();
+          const parsedValue = parseJsonValue(o._value);
+
           if (measurement.includes('state') || measurement.includes('status')) {
-            equipment.measurements.state = o._value;
+            equipment.measurements.state = parsedValue;
             equipment.lastUpdate = o._time;
           } else if (measurement.includes('phase')) {
-            equipment.measurements.phase = o._value;
+            equipment.measurements.phase = parsedValue;
           } else if (measurement.includes('batch_id')) {
-            equipment.measurements.batchId = o._value;
+            equipment.measurements.batchId = parsedValue;
           } else if (measurement.includes('recipe') || measurement.includes('formula')) {
-            equipment.measurements.recipe = o._value;
+            equipment.measurements.recipe = parsedValue;
           }
         },
         error(error) {
