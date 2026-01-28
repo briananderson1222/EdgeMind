@@ -3,6 +3,14 @@ name: Deploy EdgeMind to EC2
 on:
   push:
     branches: [dev]
+    paths:
+      - 'server.js'
+      - 'lib/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile'
+      - 'deploy/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
