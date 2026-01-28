@@ -15,7 +15,7 @@ flowchart TB
         subgraph backend[Backend - server.js]
             HTTP[HTTP Server<br/>Express.js<br/>Port 3000]
             WS[WebSocket Server<br/>ws library<br/>Port 8080]
-            MQTT_H[MQTT Handler<br/>mqtt.js]
+            MQTT_H[MQTT Handler<br/>lib/mqtt/topic-classifier.js]
             AGENT[Simple Loop<br/>30-second cycle]
             AGENTAPI[Agent API<br/>POST /api/agent/ask]
         end
@@ -32,15 +32,12 @@ flowchart TB
         CMMS[MaintainX<br/>CMMS API]
     end
 
-    subgraph agentcore[AgentCore - AWS Bedrock Agents]
-        ORCH[Orchestrator<br/>edgemind-orchestrator<br/>Supervisor Mode]
-        subgraph specialists[Specialist Agents]
-            OEE_A[OEE Analyst]
-            EQUIP_A[Equipment Health]
-            WASTE_A[Waste Analyst]
-            BATCH_A[Batch Process]
+    subgraph agentcore[AgentCore - Bedrock AgentCore]
+        subgraph agents[Specialized Agents]
+            ANOMALY[Anomaly Agent<br/>agent/anomaly<br/>Trend Analysis]
+            CHAT[Chat Agent<br/>agent/chat<br/>Interactive Q&A]
+            TROUBLE[Troubleshoot Agent<br/>agent/troubleshoot<br/>Diagnostics]
         end
-        LAMBDA[Lambda<br/>Action Groups]
     end
 
     MQTT_B -->|Subscribe '#'| MQTT_H
@@ -59,16 +56,11 @@ flowchart TB
 
     %% AgentCore Flow
     DASH -->|User question| AGENTAPI
-    AGENTAPI -->|Invoke| ORCH
-    ORCH -->|Route| OEE_A
-    ORCH -->|Route| EQUIP_A
-    ORCH -->|Route| WASTE_A
-    ORCH -->|Route| BATCH_A
-    OEE_A --> LAMBDA
-    EQUIP_A --> LAMBDA
-    WASTE_A --> LAMBDA
-    BATCH_A --> LAMBDA
-    LAMBDA -->|Tool calls| HTTP
+    AGENTAPI -->|Invoke| CHAT
+    AGENTAPI -->|Invoke| TROUBLE
+    ANOMALY -->|Scheduled analysis| INFLUX
+    CHAT -->|Query data| HTTP
+    TROUBLE -->|Query data| HTTP
     AGENTAPI -->|Response| DASH
 
     OP --> DASH
@@ -125,35 +117,43 @@ AI service for continuous trend analysis:
 - **Output:** Structured JSON with insights, anomalies, recommendations
 - **Trigger:** Automatic every 30 seconds
 
-### AgentCore - Multi-Agent System (Bedrock Agents)
+### AgentCore - Specialized Agents (Bedrock AgentCore)
 
-On-demand deep analysis via multi-agent collaboration:
+Three specialized agents deployed via AWS Bedrock AgentCore:
 
-| Component | Agent ID | Model | Purpose |
-|-----------|----------|-------|---------|
-| **Orchestrator** | `edgemind-orchestrator` | Sonnet | Supervisor that routes questions to domain specialists |
-| **OEE Analyst** | `edgemind-oee-analyst` | Haiku | OEE analysis for Enterprise A/B (discrete manufacturing) |
-| **Equipment Health** | `edgemind-equipment-health` | Haiku | Equipment state monitoring, fault pattern analysis |
-| **Waste Analyst** | `edgemind-waste-analyst` | Haiku | Defect attribution, quality waste tracking |
-| **Batch Process** | `edgemind-batch-process` | Haiku | ISA-88 batch metrics for Enterprise C (pharma) |
+| Agent | Directory | Purpose |
+|-------|-----------|---------|
+| **Anomaly Agent** | `agent/anomaly/` | Continuous trend analysis, threshold monitoring, waste alerts |
+| **Chat Agent** | `agent/chat/` | Interactive Q&A with knowledge base tools |
+| **Troubleshoot Agent** | `agent/troubleshoot/` | Equipment diagnostics, SOP lookup, guided troubleshooting |
 
-**Cost Optimization:** Orchestrator uses Sonnet for routing reasoning. Specialists use Haiku (~75% cheaper).
+**Agent Structure:**
+```
+agent/{name}/
+├── .bedrock_agentcore.yaml  # AgentCore deployment config
+├── Dockerfile               # Container build
+├── pyproject.toml           # Python dependencies
+└── src/
+    ├── main.py              # Agent entrypoint
+    ├── prompt.yaml          # System prompt
+    ├── model/load.py        # Model configuration
+    └── tools/               # Agent-specific tools (chat/troubleshoot)
+```
 
-**Lambda Action Groups:**
-- Single Lambda function routes tool calls to backend REST API
-- Tools: `get_oee_breakdown`, `get_equipment_states`, `get_waste_by_line`, `get_batch_health`, `query_influxdb`
-
-**Key Design Decision:** Enterprise C (Pharmaceutical) uses batch process metrics (yield, cycle time, batch quality) instead of OEE. The Batch Process Agent handles all Enterprise C queries.
+**Key Design Decisions:**
+- Enterprise C (Pharmaceutical) uses batch metrics, not OEE
+- Chat and Troubleshoot agents have knowledge base tools for SOP lookup
+- Anomaly agent runs on schedule for continuous monitoring
 
 ### Dual AI Architecture Comparison
 
-| Aspect | Simple Loop | AgentCore |
-|--------|-------------|-----------|
+| Aspect | Simple Loop | AgentCore Agents |
+|--------|-------------|------------------|
 | **Trigger** | Automatic (30s) | On-demand (user query) |
-| **Purpose** | Continuous monitoring | Deep analysis |
-| **Model** | Claude Sonnet 4 | Bedrock Agents |
-| **Latency** | ~2-5 seconds | ~10-30 seconds |
-| **Use Case** | Real-time alerts | Complex questions |
+| **Purpose** | Continuous monitoring | Deep analysis & interaction |
+| **Model** | Claude Sonnet 4 | Bedrock AgentCore |
+| **Latency** | ~2-5 seconds | ~5-15 seconds |
+| **Use Case** | Real-time alerts | Complex questions, troubleshooting |
 
 ## Port Mapping
 

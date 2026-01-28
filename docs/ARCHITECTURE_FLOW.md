@@ -34,7 +34,7 @@ I've successfully implemented a simplified anomaly filtering feature that modifi
 
 ## Summary
 
-### Frontend Changes (`/Users/stefanbekker/Projects/edgemind-ope-insights/index.html`)
+### Frontend Changes (`index.html`)
 
 **UI Components Added:**
 - Text input field in the AI Agent Panel with placeholder text
@@ -99,8 +99,8 @@ To test the complete implementation:
 
 1. Start the server:
    ```bash
-   cd /Users/stefanbekker/Projects/edgemind-ope-insights
-   node server.js
+   npm run dev
+   # or: node server.js
    ```
 
 2. Open browser to: http://localhost:3000
@@ -136,7 +136,7 @@ The implementation is complete and ready for testing. All components are integra
 
 I've successfully implemented a simplified anomaly filtering text input that modifies Claude's analysis prompt in real-time. Here's what was built:
 
-### Frontend Changes (`/Users/stefanbekker/Projects/edgemind-ope-insights/index.html`)
+### Frontend Changes (`index.html`)
 
 **UI Components Added:**
 - Text input field in the AI Agent Panel (above the insights container)
@@ -185,12 +185,12 @@ anomalyFilters: [] // User-defined filter rules
 
 ## Files Modified
 
-1. **`/Users/stefanbekker/Projects/edgemind-ope-insights/index.html`**
+1. **`index.html`**
    - Added filter UI components to AI Agent Panel
    - CSS styles for filter control (~110 lines)
    - JavaScript functions and handlers (~75 lines)
 
-2. **`/Users/stefanbekker/Projects/edgemind-ope-insights/server.js`**
+2. **`server.js`**
    - Added anomalyFilters to state
    - WebSocket handler for filter updates (~30 lines)
    - Claude prompt modification (~10 lines)
