@@ -1029,6 +1029,45 @@ function addMQTTMessageToStream(message) {
     }
 }
 
+// Shared helper to create insight HTML element
+function createInsightElement(insight) {
+    const insightEl = document.createElement('div');
+    insightEl.className = 'agent-insights';
+
+    const severityColors = {
+        'low': 'var(--accent-cyan)',
+        'medium': 'var(--accent-amber)',
+        'high': 'var(--accent-red)'
+    };
+    insightEl.style.borderLeftColor = severityColors[insight.severity] || severityColors['low'];
+
+    // Support both old format (insight) and new format (summary)
+    const insightText = insight.summary || insight.insight || 'No insight available';
+    const dataInfo = insight.dataPoints ? `${insight.dataPoints} data points` : `${insight.messagesAnalyzed || 0} messages`;
+
+    // Show anomaly count in insight if present
+    const anomalyInfo = insight.anomalies && insight.anomalies.length > 0
+        ? `<span style="color: var(--accent-red)">⚠ ${insight.anomalies.length} anomalies</span> • `
+        : '';
+
+    // Escape user-controlled content to prevent XSS
+    const escapedInsightText = escapeHtml(insightText);
+    const escapedConfidence = escapeHtml(String(insight.confidence || 'N/A'));
+    const escapedSeverity = escapeHtml(String(insight.severity));
+
+    insightEl.innerHTML = `
+        <div class="insight-text">${escapedInsightText}</div>
+        <div class="insight-meta">
+            ${anomalyInfo}Confidence: ${escapedConfidence} •
+            Priority: ${escapedSeverity} •
+            Analyzed ${dataInfo} •
+            ${new Date(insight.timestamp).toLocaleTimeString()}
+        </div>
+    `;
+
+    return insightEl;
+}
+
 // Add Claude insight to the AI agent panel
 function addClaudeInsight(insight) {
     // Extract anomalies from insight - supports both old (string) and new (object) formats
@@ -1076,41 +1115,7 @@ function addClaudeInsight(insight) {
     const container = document.getElementById('claude-insights-container');
     if (!container) return;
 
-    const insightEl = document.createElement('div');
-    insightEl.className = 'agent-insights';
-
-    const severityColor = {
-        'low': 'var(--accent-cyan)',
-        'medium': 'var(--accent-amber)',
-        'high': 'var(--accent-red)'
-    }[insight.severity] || 'var(--accent-cyan)';
-
-    insightEl.style.borderLeftColor = severityColor;
-
-    // Support both old format (insight) and new format (summary)
-    const insightText = insight.summary || insight.insight || 'No insight available';
-    const dataInfo = insight.dataPoints ? `${insight.dataPoints} data points` : `${insight.messagesAnalyzed || 0} messages`;
-
-    // Show anomaly count in insight if present
-    const anomalyInfo = insight.anomalies && insight.anomalies.length > 0
-        ? `<span style="color: var(--accent-red)">⚠ ${insight.anomalies.length} anomalies</span> • `
-        : '';
-
-    // Escape user-controlled content to prevent XSS
-    const escapedInsightText = escapeHtml(insightText);
-    const escapedConfidence = escapeHtml(String(insight.confidence || 'N/A'));
-    const escapedSeverity = escapeHtml(String(insight.severity));
-
-    insightEl.innerHTML = `
-        <div class="insight-text">${escapedInsightText}</div>
-        <div class="insight-meta">
-            ${anomalyInfo}Confidence: ${escapedConfidence} •
-            Priority: ${escapedSeverity} •
-            Analyzed ${dataInfo} •
-            ${new Date(insight.timestamp).toLocaleTimeString()}
-        </div>
-    `;
-
+    const insightEl = createInsightElement(insight);
     container.insertBefore(insightEl, container.firstChild);
 
     // Keep only last 5 insights visible
@@ -1585,24 +1590,20 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-function filterInsights(filterType, clickedTab) {
-    state.insightFilter = filterType;
-
+// Shared filter logic for insights (used by both main panel and modal)
+function applyInsightFilter(filterType, containerEl, tabSelector, onAnomalyClick) {
     // Update tab styling
-    document.querySelectorAll('.insight-tab').forEach(tab => {
+    document.querySelectorAll(tabSelector).forEach(tab => {
         tab.classList.remove('active');
     });
-    if (clickedTab) clickedTab.classList.add('active');
 
-    // Re-render insights
-    const container = document.getElementById('claude-insights-container');
-    if (!container) return;
-    container.innerHTML = '';
+    // Clear content
+    containerEl.innerHTML = '';
 
     if (filterType === 'anomalies') {
         // Show only anomalies
         if (state.anomalies.length === 0) {
-            container.innerHTML = `
+            containerEl.innerHTML = `
                 <div class="agent-insights">
                     <div class="insight-text">No anomalies detected yet.</div>
                     <div class="insight-meta">Claude analyzes trends every 30 seconds</div>
@@ -1620,24 +1621,38 @@ function filterInsights(filterType, clickedTab) {
                     <div>${escapedText}</div>
                     <div class="anomaly-time">${new Date(anomaly.timestamp).toLocaleTimeString()}</div>
                 `;
-                // Add click handler to open modal with static anomaly snapshot
-                el.addEventListener('click', () => openAnomalyModal(anomaly));
-                container.appendChild(el);
+                // Add click handler
+                el.addEventListener('click', () => onAnomalyClick(anomaly));
+                containerEl.appendChild(el);
             });
         }
     } else {
         // Show all insights
         if (state.insights.length === 0) {
-            container.innerHTML = `
+            containerEl.innerHTML = `
                 <div class="agent-insights">
                     <div class="insight-text">Waiting for data to analyze...</div>
                     <div class="insight-meta">Status: Standby</div>
                 </div>
             `;
         } else {
-            state.insights.forEach(insight => addClaudeInsight(insight));
+            state.insights.forEach(insight => {
+                const insightEl = createInsightElement(insight);
+                containerEl.appendChild(insightEl);
+            });
         }
     }
+}
+
+function filterInsights(filterType, clickedTab) {
+    state.insightFilter = filterType;
+
+    if (clickedTab) clickedTab.classList.add('active');
+
+    const container = document.getElementById('claude-insights-container');
+    if (!container) return;
+
+    applyInsightFilter(filterType, container, '.insight-tabs .insight-tab', openAnomalyModal);
 }
 
 // Add anomaly filter
@@ -1999,41 +2014,7 @@ function closeAgentModal() {
 }
 
 function renderModalInsight(insight, container) {
-    const insightEl = document.createElement('div');
-    insightEl.className = 'agent-insights';
-
-    const severityColor = {
-        'low': 'var(--accent-cyan)',
-        'medium': 'var(--accent-amber)',
-        'high': 'var(--accent-red)'
-    }[insight.severity] || 'var(--accent-cyan)';
-
-    insightEl.style.borderLeftColor = severityColor;
-
-    // Support both old format (insight) and new format (summary)
-    const insightText = insight.summary || insight.insight || 'No insight available';
-    const dataInfo = insight.dataPoints ? `${insight.dataPoints} data points` : `${insight.messagesAnalyzed || 0} messages`;
-
-    // Show anomaly count in insight if present
-    const anomalyInfo = insight.anomalies && insight.anomalies.length > 0
-        ? `<span style="color: var(--accent-red)">⚠ ${insight.anomalies.length} anomalies</span> • `
-        : '';
-
-    // Escape user-controlled content to prevent XSS
-    const escapedInsightText = escapeHtml(insightText);
-    const escapedConfidence = escapeHtml(String(insight.confidence || 'N/A'));
-    const escapedSeverity = escapeHtml(String(insight.severity));
-
-    insightEl.innerHTML = `
-        <div class="insight-text">${escapedInsightText}</div>
-        <div class="insight-meta">
-            ${anomalyInfo}Confidence: ${escapedConfidence} •
-            Priority: ${escapedSeverity} •
-            Analyzed ${dataInfo} •
-            ${new Date(insight.timestamp).toLocaleTimeString()}
-        </div>
-    `;
-
+    const insightEl = createInsightElement(insight);
     container.appendChild(insightEl);
 }
 
@@ -2041,57 +2022,13 @@ function filterModalInsights(filterType, clickedTab) {
     const content = document.getElementById('agent-modal-content');
     if (!content) return;
 
-    // Update tab styling
-    const modalTabs = document.querySelectorAll('.agent-modal-tabs .insight-tab');
-    modalTabs.forEach(tab => {
-        tab.classList.remove('active');
-    });
     if (clickedTab) clickedTab.classList.add('active');
 
-    // Clear content
-    content.innerHTML = '';
+    // Use shared filter logic with modal-specific anomaly handler
+    const onModalAnomalyClick = (anomaly) => {
+        closeAgentModal();
+        openAnomalyModal(anomaly);
+    };
 
-    if (filterType === 'anomalies') {
-        // Show only anomalies
-        if (state.anomalies.length === 0) {
-            content.innerHTML = `
-                <div class="agent-insights">
-                    <div class="insight-text">No anomalies detected yet.</div>
-                    <div class="insight-meta">Claude analyzes trends every 30 seconds</div>
-                </div>
-            `;
-        } else {
-            state.anomalies.forEach(anomaly => {
-                const el = document.createElement('div');
-                el.className = 'anomaly-item';
-
-                // Escape user-controlled content to prevent XSS
-                const escapedText = escapeHtml(anomaly.text);
-
-                el.innerHTML = `
-                    <div>${escapedText}</div>
-                    <div class="anomaly-time">${new Date(anomaly.timestamp).toLocaleTimeString()}</div>
-                `;
-                // Add click handler to open anomaly details modal
-                el.addEventListener('click', () => {
-                    closeAgentModal();
-                    openAnomalyModal(anomaly);
-                });
-                content.appendChild(el);
-            });
-        }
-    } else {
-        // Show all insights (last 20)
-        const insights = state.insights.slice(-20);
-        if (insights.length === 0) {
-            content.innerHTML = `
-                <div class="agent-insights">
-                    <div class="insight-text">Waiting for data to analyze...</div>
-                    <div class="insight-meta">Status: Standby</div>
-                </div>
-            `;
-        } else {
-            insights.forEach(insight => renderModalInsight(insight, content));
-        }
-    }
+    applyInsightFilter(filterType, content, '.agent-modal-tabs .insight-tab', onModalAnomalyClick);
 }

@@ -1717,7 +1717,8 @@
             letter-spacing: 2px;
         }
 
-        .anomaly-modal-close {
+        /* Shared modal close button styles */
+        .modal-close-btn {
             background: none;
             border: 2px solid var(--accent-red);
             color: var(--accent-red);
@@ -1733,11 +1734,15 @@
             font-family: 'Orbitron', sans-serif;
         }
 
-        .anomaly-modal-close:hover {
+        .modal-close-btn:hover {
             background: var(--accent-red);
             color: var(--bg-dark);
             transform: scale(1.1);
             box-shadow: 0 0 15px var(--accent-red);
+        }
+
+        .anomaly-modal-close {
+            /* Inherits from .modal-close-btn */
         }
 
         .anomaly-modal-content {
@@ -1900,18 +1905,7 @@
             border-radius: 12px;
             display: flex;
             flex-direction: column;
-            animation: modalSlideIn 0.3s ease;
-        }
-
-        @keyframes modalSlideIn {
-            from {
-                transform: translateY(-30px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
+            animation: slideIn 0.3s ease;
         }
 
         .agent-modal-header {
@@ -2050,20 +2044,7 @@
         }
 
         .settings-modal-close {
-            background: none;
-            border: 2px solid var(--accent-red);
-            color: var(--accent-red);
-            width: 32px;
-            height: 32px;
-            border-radius: 4px;
-            font-size: 1.2rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .settings-modal-close:hover {
-            background: var(--accent-red);
-            color: var(--bg-primary);
+            /* Inherits from .modal-close-btn */
         }
 
         .settings-group {
