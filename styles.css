@@ -339,6 +339,34 @@
             font-family: 'Share Tech Mono', monospace;
         }
 
+        .factory-btn.loading {
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .factory-btn.loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: 15px;
+            width: 16px;
+            height: 16px;
+            margin-top: -8px;
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            border-top-color: var(--accent-cyan);
+            border-radius: 50%;
+            animation: btn-spinner 0.8s linear infinite;
+        }
+
+        @keyframes btn-spinner {
+            to { transform: rotate(360deg); }
+        }
+
+        .factory-selector.loading .factory-btn:not(.active) {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
         /* Metrics */
         .metrics {
             grid-column: span 3;

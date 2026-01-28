@@ -30,6 +30,7 @@ let isConnected = false;
 let messageRate = 0;
 let lastMessageTime = Date.now();
 let messagesSinceLastRate = 0;
+let refreshAbortController = null;
 
 // State
 const state = {
@@ -246,7 +247,7 @@ function updateCharts() {
 }
 
 // Fetch OEE breakdown and update chart
-async function fetchOEEBreakdown() {
+async function fetchOEEBreakdown(signal) {
     try {
         // Hide chart if filtering to single enterprise
         const oeeBreakdownContainer = document.getElementById('oee-breakdown-chart');
@@ -258,7 +259,7 @@ async function fetchOEEBreakdown() {
             chartCard.style.display = '';
         }
 
-        const response = await fetch('/api/oee/breakdown');
+        const response = await fetch('/api/oee/breakdown', { signal });
         const data = await response.json();
 
         if (window.oeeBreakdownChart && data.data) {
@@ -273,18 +274,19 @@ async function fetchOEEBreakdown() {
             window.oeeBreakdownChart.update('none');
         }
     } catch (error) {
+        if (error.name === 'AbortError') return; // Expected when user changes filter
         console.error('Failed to fetch OEE breakdown:', error);
     }
 }
 
 // Fetch waste trends and update chart
-async function fetchWasteTrends() {
+async function fetchWasteTrends(signal) {
     try {
         const enterprise = getEnterpriseParam();
         const url = enterprise !== 'ALL'
             ? `/api/waste/trends?enterprise=${encodeURIComponent(enterprise)}`
             : '/api/waste/trends';
-        const response = await fetch(url);
+        const response = await fetch(url, { signal });
         const data = await response.json();
 
         if (window.wasteTrendChart && data.linesSummary) {
@@ -326,18 +328,19 @@ async function fetchWasteTrends() {
             window.wasteTrendChart.update('none');
         }
     } catch (error) {
+        if (error.name === 'AbortError') return; // Expected when user changes filter
         console.error('Failed to fetch waste trends:', error);
     }
 }
 
 // Fetch scrap by line and update chart
-async function fetchScrapByLine() {
+async function fetchScrapByLine(signal) {
     try {
         const enterprise = getEnterpriseParam();
         const url = enterprise !== 'ALL'
             ? `/api/waste/by-line?enterprise=${encodeURIComponent(enterprise)}`
             : '/api/waste/by-line';
-        const response = await fetch(url);
+        const response = await fetch(url, { signal });
         const data = await response.json();
 
         if (window.scrapByLineChart && data.lines) {
@@ -354,18 +357,19 @@ async function fetchScrapByLine() {
             window.scrapByLineChart.update('none');
         }
     } catch (error) {
+        if (error.name === 'AbortError') return; // Expected when user changes filter
         console.error('Failed to fetch scrap by line:', error);
     }
 }
 
 // Fetch and render quality metrics from waste/trends summary
-async function fetchQualityMetrics() {
+async function fetchQualityMetrics(signal) {
     try {
         const enterprise = getEnterpriseParam();
         const url = enterprise !== 'ALL'
             ? `/api/waste/trends?enterprise=${encodeURIComponent(enterprise)}`
             : '/api/waste/trends';
-        const response = await fetch(url);
+        const response = await fetch(url, { signal });
         const data = await response.json();
 
         const grid = document.getElementById('quality-grid');
@@ -446,6 +450,7 @@ async function fetchQualityMetrics() {
 
         grid.innerHTML = html;
     } catch (error) {
+        if (error.name === 'AbortError') return; // Expected when user changes filter
         console.error('Failed to fetch quality metrics:', error);
         const grid = document.getElementById('quality-grid');
         if (grid) {
@@ -455,20 +460,21 @@ async function fetchQualityMetrics() {
 }
 
 // Fetch factory status and render production heatmap
-async function fetchFactoryStatus() {
+async function fetchFactoryStatus(signal) {
     try {
         const enterprise = getEnterpriseParam();
         const url = enterprise !== 'ALL'
             ? `/api/factory/status?enterprise=${encodeURIComponent(enterprise)}`
             : '/api/factory/status';
 
-        const response = await fetch(url);
+        const response = await fetch(url, { signal });
         const data = await response.json();
 
         if (data.enterprises) {
             renderProductionHeatmap(data.enterprises);
         }
     } catch (error) {
+        if (error.name === 'AbortError') return; // Expected when user changes filter
         console.error('Failed to fetch factory status:', error);
         const container = document.getElementById('production-heatmap');
         if (container) {
@@ -726,13 +732,13 @@ function handleServerMessage(message) {
 }
 
 // Fetch equipment states from API
-async function fetchEquipmentStates() {
+async function fetchEquipmentStates(signal) {
     try {
         const enterprise = getEnterpriseParam();
         const url = enterprise !== 'ALL'
             ? `/api/equipment/states?enterprise=${encodeURIComponent(enterprise)}`
             : '/api/equipment/states';
-        const response = await fetch(url);
+        const response = await fetch(url, { signal });
         const data = await response.json();
 
         if (data.states && Array.isArray(data.states)) {
@@ -768,6 +774,7 @@ async function fetchEquipmentStates() {
             updateEquipmentStateGrid();
         }
     } catch (error) {
+        if (error.name === 'AbortError') return; // Expected when user changes filter
         console.error('Failed to fetch equipment states:', error);
         const grid = document.getElementById('equipment-state-grid');
         if (grid) {
@@ -834,9 +841,9 @@ function updateEquipmentStateGrid() {
 }
 
 // Fetch line OEE from API
-async function fetchLineOEE() {
+async function fetchLineOEE(signal) {
     try {
-        const response = await fetch('/api/oee/lines');
+        const response = await fetch('/api/oee/lines', { signal });
         const data = await response.json();
 
         if (data.lines && Array.isArray(data.lines)) {
@@ -854,6 +861,7 @@ async function fetchLineOEE() {
             }
         }
     } catch (error) {
+        if (error.name === 'AbortError') return; // Expected when user changes filter
         console.error('Failed to fetch line OEE:', error);
         const grid = document.getElementById('line-oee-grid');
         if (grid) {
@@ -1263,52 +1271,66 @@ function displayClaudeResponse(data) {
 }
 
 // Factory selection
-function selectFactory(factory, event) {
+function selectFactory(factory) {
+    if (state.selectedFactory === factory) return;
+
+    if (refreshAbortController) refreshAbortController.abort();
+
     state.selectedFactory = factory;
-    document.querySelectorAll('.factory-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    if (event && event.target) {
-        event.target.closest('.factory-btn').classList.add('active');
+    try {
+        localStorage.setItem('edgemind_selectedFactory', factory);
+    } catch (e) {
+        // localStorage unavailable
     }
 
-    // Clear filtered data but preserve sensor count
+    document.querySelectorAll('.factory-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.factory === factory);
+    });
+
+    const selector = document.querySelector('.factory-selector');
+    const activeBtn = document.querySelector(`.factory-btn[data-factory="${factory}"]`);
+    if (selector) selector.classList.add('loading');
+    if (activeBtn) activeBtn.classList.add('loading');
+
     state.messages = [];
-    // Don't clear uniqueTopics - keep cumulative sensor count
     state.enterpriseCounts = { 'Enterprise A': 0, 'Enterprise B': 0, 'Enterprise C': 0 };
 
-    // Reset charts
     if (window.healthChart) {
         window.healthChart.data.datasets[0].data = [0, 0, 0];
         window.healthChart.update();
     }
 
-    // Refresh all data for selected enterprise
-    refreshAllData();
+    refreshAllData().finally(() => {
+        if (selector) selector.classList.remove('loading');
+        if (activeBtn) activeBtn.classList.remove('loading');
+    });
 
-    // Update metrics display
     updateMetrics();
-
     console.log('Filtering by factory:', factory);
 }
 
 // Refresh all data cards with current filter
-function refreshAllData() {
-    fetchOEE();
-    fetchOEEBreakdown();
-    fetchFactoryStatus();
-    fetchWasteTrends();
-    fetchScrapByLine();
-    fetchQualityMetrics();
-    fetchEquipmentStates();
-    fetchLineOEE();
+async function refreshAllData() {
+    refreshAbortController = new AbortController();
+    const signal = refreshAbortController.signal;
+
+    await Promise.allSettled([
+        fetchOEE(signal),
+        fetchOEEBreakdown(signal),
+        fetchFactoryStatus(signal),
+        fetchWasteTrends(signal),
+        fetchScrapByLine(signal),
+        fetchQualityMetrics(signal),
+        fetchEquipmentStates(signal),
+        fetchLineOEE(signal)
+    ]);
 }
 
 // Fetch OEE from API (24h average)
-async function fetchOEE() {
+async function fetchOEE(signal) {
     try {
         const enterprise = getEnterpriseParam();
-        const response = await fetch(`/api/oee?enterprise=${encodeURIComponent(enterprise)}`);
+        const response = await fetch(`/api/oee?enterprise=${encodeURIComponent(enterprise)}`, { signal });
         const data = await response.json();
 
         const oeeScore = document.getElementById('oee-score');
@@ -1329,6 +1351,7 @@ async function fetchOEE() {
             updateOEEGauge(0);
         }
     } catch (error) {
+        if (error.name === 'AbortError') return; // Expected when user changes filter
         console.error('Failed to fetch OEE:', error);
         document.getElementById('oee-status').textContent = 'API error';
         updateOEEGauge(0);
@@ -1783,6 +1806,19 @@ function toggleStreamPause() {
 window.addEventListener('load', () => {
     console.log('🚀 Initializing EdgeMind...');
 
+    // Restore saved factory selection from localStorage
+    try {
+        const savedFactory = localStorage.getItem('edgemind_selectedFactory');
+        if (savedFactory && ['ALL', 'A', 'B', 'C'].includes(savedFactory)) {
+            state.selectedFactory = savedFactory;
+            document.querySelectorAll('.factory-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.factory === savedFactory);
+            });
+        }
+    } catch (e) {
+        // localStorage unavailable (private browsing, etc.)
+    }
+
     // Initialize charts first
     initializeCharts();
 
@@ -1966,6 +2002,18 @@ document.addEventListener('DOMContentLoaded', () => {
         agentModalOverlay.addEventListener('click', function(e) {
             if (e.target === agentModalOverlay) {
                 closeAgentModal();
+            }
+        });
+    }
+
+    // Setup factory button event delegation
+    const factorySelector = document.querySelector('.factory-selector');
+    if (factorySelector) {
+        factorySelector.addEventListener('click', (e) => {
+            const btn = e.target.closest('.factory-btn');
+            if (btn && !btn.classList.contains('loading')) {
+                const factory = btn.dataset.factory;
+                if (factory) selectFactory(factory);
             }
         });
     }
