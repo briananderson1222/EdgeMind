@@ -918,7 +918,50 @@ function renderBatchOperations(data) {
         `;
     }).join('');
 
-    grid.innerHTML = summaryHtml + cardsHtml;
+    // Build cleanroom section if data is available
+    let cleanroomHtml = '';
+    if (data.cleanroom && data.cleanroom.zones && data.cleanroom.zones.length > 0) {
+        const cleanroomSummary = data.cleanroom.summary || {};
+
+        cleanroomHtml = `
+            <div class="batch-summary" style="margin-top: 20px;">
+                <h4 style="width: 100%; margin-bottom: 8px; color: var(--text-primary); font-size: 0.95rem;">Cleanroom Environmental Zones</h4>
+                <div class="cleanroom-summary">
+                    ${cleanroomSummary.avgTemp !== null ? `<span>Avg Temp: ${cleanroomSummary.avgTemp.toFixed(1)}°C</span>` : ''}
+                    ${cleanroomSummary.avgHumidity !== null ? `<span>Avg Humidity: ${cleanroomSummary.avgHumidity.toFixed(0)}%</span>` : ''}
+                    ${cleanroomSummary.avgPm25 !== null ? `<span>Avg PM2.5: ${cleanroomSummary.avgPm25.toFixed(1)} µg/m³</span>` : ''}
+                    <span class="pm25-status ${cleanroomSummary.pm25Status?.toLowerCase() || 'good'}">
+                        PM2.5: ${cleanroomSummary.pm25Status || 'Unknown'}
+                    </span>
+                    ${cleanroomSummary.zonesWithIssues > 0 ? `<span class="zones-issues">Issues: ${cleanroomSummary.zonesWithIssues}/${cleanroomSummary.totalZones}</span>` : ''}
+                </div>
+            </div>
+            <div class="cleanroom-grid">
+                ${data.cleanroom.zones.map(zone => {
+                    const statusClass = (zone.status || 'Unknown').toLowerCase();
+                    return `
+                        <div class="cleanroom-card ${statusClass}">
+                            <div class="zone-name">${escapeHtml(zone.name)}</div>
+                            <div class="zone-metrics">
+                                ${zone.temperature !== null && zone.temperature !== undefined && !isNaN(zone.temperature) ?
+                                    `<span class="metric">${zone.temperature.toFixed(1)}°C</span>` :
+                                    '<span class="metric">--°C</span>'}
+                                ${zone.humidity !== null && zone.humidity !== undefined && !isNaN(zone.humidity) ?
+                                    `<span class="metric">${zone.humidity.toFixed(0)}%</span>` :
+                                    '<span class="metric">--%</span>'}
+                                ${zone.pm25 !== null && zone.pm25 !== undefined && !isNaN(zone.pm25) ?
+                                    `<span class="metric pm25">${zone.pm25.toFixed(1)} µg/m³</span>` :
+                                    '<span class="metric pm25">-- µg/m³</span>'}
+                            </div>
+                            <div class="zone-status ${statusClass}">${escapeHtml(zone.status || 'Unknown')}</div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    grid.innerHTML = summaryHtml + cardsHtml + cleanroomHtml;
 }
 
 // Render batch operations error state

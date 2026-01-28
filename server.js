@@ -1720,9 +1720,182 @@ app.get('/api/batch/status', async (req, res) => {
     // Sort by equipment ID for consistency
     equipment.sort((a, b) => a.id.localeCompare(b.id));
 
+    // Query cleanroom environmental zones for Enterprise C
+    const cleanroomZones = [];
+    const cleanroomQuery = `
+      from(bucket: "${CONFIG.influxdb.bucket}")
+        |> range(start: -5m)
+        |> filter(fn: (r) => r._field == "value")
+        |> filter(fn: (r) => r.enterprise == "Enterprise C")
+        |> filter(fn: (r) => r.site == "opto22")
+        |> filter(fn: (r) => r.area == "Environmental Zones")
+        |> filter(fn: (r) => r._measurement =~ /FC\\d+_/)
+        |> last()
+    `;
+
+    // Collect cleanroom data by zone (machine)
+    const cleanroomData = new Map();
+
+    await new Promise((resolve) => {
+      queryApi.queryRows(cleanroomQuery, {
+        next(row, tableMeta) {
+          const o = tableMeta.toObject(row);
+          if (!o._measurement || !o._value || !o.machine) return;
+
+          // Initialize zone entry if needed
+          if (!cleanroomData.has(o.machine)) {
+            cleanroomData.set(o.machine, {
+              name: o.machine,
+              metrics: {},
+              lastUpdate: o._time
+            });
+          }
+
+          const zone = cleanroomData.get(o.machine);
+          const parsedValue = parseJsonValue(o._value);
+          const measurement = o._measurement.toLowerCase();
+
+          // Extract FC## prefix and metric type
+          // Measurements follow pattern: FC##_Metric_Name or FC##_Air_Quality__PM2_5_
+          const fcMatch = o._measurement.match(/FC(\d+)_(.*)/i);
+          if (!fcMatch) return;
+
+          const [, fcNumber, metricType] = fcMatch;
+          const metricLower = metricType.toLowerCase();
+
+          // Categorize metrics
+          if (metricLower.includes('fan') && metricLower.includes('status')) {
+            zone.metrics.fanStatus = parsedValue;
+          } else if (metricLower.includes('ambient') && metricLower.includes('temperature')) {
+            zone.metrics.temperature = typeof parsedValue === 'number' ? parsedValue : parseFloat(parsedValue);
+          } else if (metricLower.includes('temperature') && !metricLower.includes('ambient')) {
+            // Generic temperature fallback
+            if (!zone.metrics.temperature) {
+              zone.metrics.temperature = typeof parsedValue === 'number' ? parsedValue : parseFloat(parsedValue);
+            }
+          } else if (metricLower.includes('humid')) {
+            zone.metrics.humidity = typeof parsedValue === 'number' ? parsedValue : parseFloat(parsedValue);
+          } else if (metricLower.includes('pm2') || metricLower.includes('pm_2') || metricLower.includes('air_quality')) {
+            zone.metrics.pm25 = typeof parsedValue === 'number' ? parsedValue : parseFloat(parsedValue);
+          }
+
+          zone.lastUpdate = o._time;
+        },
+        error(error) {
+          console.error('Cleanroom query error:', error);
+          resolve();
+        },
+        complete() {
+          resolve();
+        }
+      });
+    });
+
+    // Get cleanroom thresholds from domain context
+    const { getEnterpriseContext } = require('./lib/domain-context');
+    const enterpriseContext = getEnterpriseContext('Enterprise C');
+    const thresholds = enterpriseContext?.cleanroomThresholds || {
+      'PM2.5': { warning: 5, critical: 10 },
+      'temperature': { min: 18, max: 25 },
+      'humidity': { min: 40, max: 60 }
+    };
+
+    // Process cleanroom zones and calculate status
+    let totalTemp = 0;
+    let totalHumidity = 0;
+    let totalPm25 = 0;
+    let tempCount = 0;
+    let humidityCount = 0;
+    let pm25Count = 0;
+    let zonesWithIssues = 0;
+
+    for (const [machineName, data] of cleanroomData.entries()) {
+      const { temperature, humidity, pm25, fanStatus } = data.metrics;
+
+      // Determine zone status based on thresholds
+      let status = 'Good';
+      const issues = [];
+
+      if (typeof temperature === 'number' && !isNaN(temperature)) {
+        totalTemp += temperature;
+        tempCount++;
+        if (temperature < thresholds.temperature.min || temperature > thresholds.temperature.max) {
+          issues.push('temperature');
+          status = 'Critical';
+        } else if (Math.abs(temperature - thresholds.temperature.min) < 1 ||
+                   Math.abs(temperature - thresholds.temperature.max) < 1) {
+          if (status === 'Good') status = 'Warning';
+        }
+      }
+
+      if (typeof humidity === 'number' && !isNaN(humidity)) {
+        totalHumidity += humidity;
+        humidityCount++;
+        if (humidity < thresholds.humidity.min || humidity > thresholds.humidity.max) {
+          issues.push('humidity');
+          status = 'Critical';
+        } else if (Math.abs(humidity - thresholds.humidity.min) < 3 ||
+                   Math.abs(humidity - thresholds.humidity.max) < 3) {
+          if (status === 'Good') status = 'Warning';
+        }
+      }
+
+      if (typeof pm25 === 'number' && !isNaN(pm25)) {
+        totalPm25 += pm25;
+        pm25Count++;
+        if (pm25 >= thresholds['PM2.5'].critical) {
+          issues.push('PM2.5');
+          status = 'Critical';
+        } else if (pm25 >= thresholds['PM2.5'].warning) {
+          if (status === 'Good') status = 'Warning';
+        }
+      }
+
+      if (status !== 'Good') {
+        zonesWithIssues++;
+      }
+
+      cleanroomZones.push({
+        name: machineName,
+        fanStatus: fanStatus || 'Unknown',
+        temperature: temperature,
+        humidity: humidity,
+        pm25: pm25,
+        status,
+        issues,
+        lastUpdate: data.lastUpdate
+      });
+    }
+
+    // Sort zones by name
+    cleanroomZones.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Calculate averages
+    const avgTemp = tempCount > 0 ? totalTemp / tempCount : null;
+    const avgHumidity = humidityCount > 0 ? totalHumidity / humidityCount : null;
+    const avgPm25 = pm25Count > 0 ? totalPm25 / pm25Count : null;
+
+    // Determine overall PM2.5 status
+    let pm25Status = 'Good';
+    if (avgPm25 !== null) {
+      if (avgPm25 >= thresholds['PM2.5'].critical) pm25Status = 'Critical';
+      else if (avgPm25 >= thresholds['PM2.5'].warning) pm25Status = 'Warning';
+    }
+
     res.json({
       equipment,
       summary,
+      cleanroom: {
+        zones: cleanroomZones,
+        summary: {
+          avgTemp,
+          avgHumidity,
+          avgPm25,
+          pm25Status,
+          zonesWithIssues,
+          totalZones: cleanroomZones.length
+        }
+      },
       timestamp: new Date().toISOString()
     });
 

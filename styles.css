@@ -1482,6 +1482,124 @@
             font-size: 0.75rem;
         }
 
+        /* Cleanroom Environmental Zones */
+        .cleanroom-summary {
+            display: flex;
+            gap: 20px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            flex-wrap: wrap;
+        }
+
+        .cleanroom-summary span {
+            white-space: nowrap;
+        }
+
+        .pm25-status {
+            font-weight: 600;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .pm25-status.good {
+            color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.1);
+        }
+
+        .pm25-status.warning {
+            color: var(--accent-amber);
+            background: rgba(255, 191, 0, 0.1);
+        }
+
+        .pm25-status.critical {
+            color: var(--accent-red);
+            background: rgba(255, 0, 110, 0.1);
+        }
+
+        .zones-issues {
+            color: var(--accent-amber);
+            font-weight: 600;
+        }
+
+        .cleanroom-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .cleanroom-card {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 12px;
+            border-left: 3px solid var(--accent-cyan);
+            transition: all 0.3s ease;
+        }
+
+        .cleanroom-card.good {
+            border-left-color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .cleanroom-card.warning {
+            border-left-color: var(--accent-amber);
+            background: rgba(255, 191, 0, 0.05);
+        }
+
+        .cleanroom-card.critical {
+            border-left-color: var(--accent-red);
+            background: rgba(255, 0, 110, 0.05);
+        }
+
+        .cleanroom-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 255, 255, 0.2);
+        }
+
+        .zone-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .zone-metrics {
+            display: flex;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        }
+
+        .zone-metrics .metric {
+            white-space: nowrap;
+        }
+
+        .zone-metrics .metric.pm25 {
+            color: var(--accent-cyan);
+        }
+
+        .zone-status {
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .zone-status.good {
+            color: var(--accent-green);
+        }
+
+        .zone-status.warning {
+            color: var(--accent-amber);
+        }
+
+        .zone-status.critical {
+            color: var(--accent-red);
+        }
+
         /* Charts placeholder */
         .chart-panel {
             grid-column: span 6;
