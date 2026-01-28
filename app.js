@@ -1061,7 +1061,7 @@ function createInsightElement(insight) {
             ${anomalyInfo}Confidence: ${escapedConfidence} •
             Priority: ${escapedSeverity} •
             Analyzed ${dataInfo} •
-            ${new Date(insight.timestamp).toLocaleTimeString()}
+            ${insight.timestamp ? new Date(insight.timestamp).toLocaleTimeString() : ''}
         </div>
     `;
 
@@ -1619,7 +1619,7 @@ function applyInsightFilter(filterType, containerEl, tabSelector, onAnomalyClick
 
                 el.innerHTML = `
                     <div>${escapedText}</div>
-                    <div class="anomaly-time">${new Date(anomaly.timestamp).toLocaleTimeString()}</div>
+                    <div class="anomaly-time">${anomaly.timestamp ? new Date(anomaly.timestamp).toLocaleTimeString() : ''}</div>
                 `;
                 // Add click handler
                 el.addEventListener('click', () => onAnomalyClick(anomaly));

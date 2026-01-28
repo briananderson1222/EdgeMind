@@ -1741,9 +1741,6 @@
             box-shadow: 0 0 15px var(--accent-red);
         }
 
-        .anomaly-modal-close {
-            /* Inherits from .modal-close-btn */
-        }
 
         .anomaly-modal-content {
             margin-bottom: 20px;
@@ -2043,9 +2040,6 @@
             letter-spacing: 2px;
         }
 
-        .settings-modal-close {
-            /* Inherits from .modal-close-btn */
-        }
 
         .settings-group {
             margin-bottom: 20px;
