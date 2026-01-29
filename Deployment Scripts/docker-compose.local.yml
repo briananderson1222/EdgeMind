@@ -28,7 +28,7 @@ services:
       - KB_COLLECTION=${KB_COLLECTION:-edgemind_sops}
       - KB_PATH=/app/knowledge-base
     volumes:
-      - ./scripts:/app/scripts:ro
+      - ./local:/app/scripts:ro
       - ../knowledge-base:/app/knowledge-base:ro
     depends_on:
       chromadb:

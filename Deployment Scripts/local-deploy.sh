@@ -25,7 +25,7 @@ echo ""
 # Prerequisites Check
 # -----------------------------------------------------------------------------
 check_prerequisites() {
-    echo -e "${YELLOW}[1/5] Checking prerequisites...${NC}"
+    echo -e "${YELLOW}[1/4] Checking prerequisites...${NC}"
 
     local missing=0
 
@@ -68,7 +68,7 @@ check_prerequisites() {
 # Environment Setup
 # -----------------------------------------------------------------------------
 setup_environment() {
-    echo -e "${YELLOW}[2/5] Setting up environment...${NC}"
+    echo -e "${YELLOW}[2/4] Setting up environment...${NC}"
 
     if [ ! -f "$PROJECT_ROOT/.env" ]; then
         if [ -f "$PROJECT_ROOT/.env.template" ]; then
@@ -136,96 +136,94 @@ setup_environment() {
 }
 
 # -----------------------------------------------------------------------------
-# Docker Operations (Idempotent)
+# AWS Credentials Setup
 # -----------------------------------------------------------------------------
-deploy_services() {
-    echo -e "${YELLOW}[3/5] Deploying services...${NC}"
+setup_aws_credentials() {
+    echo -e "${YELLOW}[3/4] Setting up AWS credentials...${NC}"
 
-    # Pull latest images
-    echo -e "  Pulling ChromaDB image..."
-    docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml pull chromadb 2>/dev/null || true
-    echo -e "  Pulling InfluxDB image..."
-    docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml pull influxdb 2>/dev/null || true
+    # Helper to update .env file with credentials
+    update_env_creds() {
+        local env_file="$PROJECT_ROOT/.env"
+        # Remove old AWS creds (including expiration)
+        grep -v "^AWS_ACCESS_KEY_ID=" "$env_file" | grep -v "^AWS_SECRET_ACCESS_KEY=" | grep -v "^AWS_SESSION_TOKEN=" | grep -v "^AWS_CREDENTIAL_EXPIRATION=" > "$env_file.tmp"
+        mv "$env_file.tmp" "$env_file"
+        # Add new ones
+        echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> "$env_file"
+        echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> "$env_file"
+        [ -n "$AWS_SESSION_TOKEN" ] && echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> "$env_file"
+    }
 
-    # Build backend (always rebuild to pick up code changes)
-    echo -e "  Building backend image..."
-    docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml build backend --quiet
+    # Determine which profile to use
+    local profile="${AWS_PROFILE:-default}"
+    
+    # Check if profile uses credential_process (helper that won't work in container)
+    local uses_helper=false
+    if grep -A5 "^\[profile $profile\]" ~/.aws/config 2>/dev/null | grep -q "credential_process"; then
+        uses_helper=true
+    elif grep -A5 "^\[$profile\]" ~/.aws/config 2>/dev/null | grep -q "credential_process"; then
+        uses_helper=true
+    elif grep -A5 "^\[$profile\]" ~/.aws/credentials 2>/dev/null | grep -q "credential_process"; then
+        uses_helper=true
+    fi
 
-    # Start services (docker compose handles idempotency)
-    echo -e "  Starting services..."
-    docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml up -d
-
-    echo -e "${GREEN}  OK: Services deployed${NC}"
+    if [ "$uses_helper" = true ]; then
+        echo -e "  Profile '$profile' uses credential helper - extracting credentials..."
+        
+        # Get the credential_process command
+        local cred_cmd
+        cred_cmd=$(grep -A5 "^\[$profile\]" ~/.aws/config 2>/dev/null | grep "credential_process" | sed 's/^[[:space:]]*credential_process[[:space:]]*=[[:space:]]*//')
+        if [ -z "$cred_cmd" ]; then
+            cred_cmd=$(grep -A5 "^\[profile $profile\]" ~/.aws/config 2>/dev/null | grep "credential_process" | sed 's/^[[:space:]]*credential_process[[:space:]]*=[[:space:]]*//')
+        fi
+        
+        if [ -n "$cred_cmd" ]; then
+            # Run the credential process directly
+            local creds
+            creds=$(eval "$cred_cmd" 2>/dev/null)
+            
+            if [ -n "$creds" ] && echo "$creds" | jq -e '.AccessKeyId' &>/dev/null; then
+                export AWS_ACCESS_KEY_ID=$(echo "$creds" | jq -r '.AccessKeyId')
+                export AWS_SECRET_ACCESS_KEY=$(echo "$creds" | jq -r '.SecretAccessKey')
+                export AWS_SESSION_TOKEN=$(echo "$creds" | jq -r '.SessionToken')
+                update_env_creds
+                echo -e "${GREEN}  OK: Extracted credentials from helper${NC}"
+            else
+                echo -e "${RED}  ERROR: Failed to get credentials from helper${NC}"
+                echo -e "  You may need to run: mwinit"
+                exit 1
+            fi
+        else
+            echo -e "${RED}  ERROR: Could not find credential_process command${NC}"
+            exit 1
+        fi
+    else
+        # Simple profile - ~/.aws mount will work
+        if aws sts get-caller-identity --profile "$profile" &>/dev/null; then
+            echo -e "${GREEN}  OK: Using AWS profile '$profile' (via ~/.aws mount)${NC}"
+            export AWS_PROFILE="$profile"
+        else
+            echo -e "${RED}  ERROR: Cannot authenticate with profile '$profile'${NC}"
+            echo -e "  Run 'aws configure' or set AWS_PROFILE in .env"
+            exit 1
+        fi
+    fi
+    
     echo ""
 }
 
 # -----------------------------------------------------------------------------
-# Health Check
+# Docker Operations (Idempotent)
 # -----------------------------------------------------------------------------
-wait_for_services() {
-    echo -e "${YELLOW}[4/5] Waiting for services to be healthy...${NC}"
+deploy_services() {
+    echo -e "${YELLOW}[4/4] Deploying services...${NC}"
 
-    local max_attempts=30
-    local attempt=0
+    # Stop existing containers first for clean restart
+    docker compose -f docker-compose.local.yml --env-file "$PROJECT_ROOT/.env" down 2>/dev/null || true
 
-    # Wait for ChromaDB
-    echo -n "  ChromaDB: "
-    while [ $attempt -lt $max_attempts ]; do
-        if curl -sf http://localhost:8000/api/v2/heartbeat > /dev/null 2>&1; then
-            echo -e "${GREEN}healthy${NC}"
-            break
-        fi
-        attempt=$((attempt + 1))
-        echo -n "."
-        sleep 2
-    done
+    # Start all services (builds if needed, pulls if needed)
+    docker compose -f docker-compose.local.yml --env-file "$PROJECT_ROOT/.env" up -d --build
 
-    if [ $attempt -eq $max_attempts ]; then
-        echo -e "${RED}failed${NC}"
-        echo -e "${RED}  ChromaDB failed to start. Logs:${NC}"
-        docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml logs chromadb --tail=10
-        exit 1
-    fi
-
-    # Wait for InfluxDB
-    attempt=0
-    echo -n "  InfluxDB: "
-    while [ $attempt -lt $max_attempts ]; do
-        if curl -sf http://localhost:8086/health > /dev/null 2>&1; then
-            echo -e "${GREEN}healthy${NC}"
-            break
-        fi
-        attempt=$((attempt + 1))
-        echo -n "."
-        sleep 2
-    done
-
-    if [ $attempt -eq $max_attempts ]; then
-        echo -e "${RED}failed${NC}"
-        echo -e "${RED}  InfluxDB failed to start. Logs:${NC}"
-        docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml logs influxdb --tail=10
-        exit 1
-    fi
-
-    # Wait for backend
-    attempt=0
-    echo -n "  Backend:  "
-    while [ $attempt -lt $max_attempts ]; do
-        if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
-            echo -e "${GREEN}healthy${NC}"
-            break
-        fi
-        attempt=$((attempt + 1))
-        echo -n "."
-        sleep 2
-    done
-
-    if [ $attempt -eq $max_attempts ]; then
-        echo -e "${YELLOW}check logs${NC}"
-        echo -e "${YELLOW}  Backend may still be starting. Check logs:${NC}"
-        echo -e "  docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml logs backend"
-    fi
-
+    echo -e "${GREEN}  OK: Services deployed${NC}"
     echo ""
 }
 
@@ -238,21 +236,23 @@ print_status() {
     echo -e "${BLUE}==================================================${NC}"
     echo ""
     echo -e "${YELLOW}Services:${NC}"
-    docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || \
-        docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml ps
+    docker compose -f docker-compose.local.yml --env-file "$PROJECT_ROOT/.env" ps
     echo ""
     echo -e "${YELLOW}Access URLs:${NC}"
-    echo "  Dashboard:      http://localhost:3000/"
-    echo "  API Health:     http://localhost:3000/health"
-    echo "  API Trends:     http://localhost:3000/api/trends"
-    echo "  InfluxDB UI:    http://localhost:8086"
-    echo "  ChromaDB API:   http://localhost:8000"
+    echo "  Dashboard:        http://localhost:3000/"
+    echo "  API Health:       http://localhost:3000/health"
+    echo "  API Docs:         http://localhost:3000/api/docs/"
+    echo "  InfluxDB UI:      http://localhost:8086"
+    echo "  ChromaDB API:     http://localhost:8002"
+    echo "  MCP Gateway:      http://localhost:8001"
+    echo "  Agent Chat:       http://localhost:8080"
+    echo "  Agent Troubleshoot: http://localhost:8081"
+    echo "  Agent Anomaly:    http://localhost:8082"
     echo ""
     echo -e "${YELLOW}Useful commands:${NC}"
-    echo "  View logs:      docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml logs -f"
-    echo "  Stop services:  docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml down"
-    echo "  Restart:        docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml restart"
-    echo "  Clean reset:    docker compose --env-file "$PROJECT_ROOT/.env" -f docker-compose.local.yml down -v"
+    echo "  View logs:      cd 'Deployment Scripts' && docker compose -f docker-compose.local.yml logs -f"
+    echo "  Stop services:  cd 'Deployment Scripts' && docker compose -f docker-compose.local.yml down"
+    echo "  Clean reset:    cd 'Deployment Scripts' && docker compose -f docker-compose.local.yml down -v"
     echo ""
 }
 
@@ -262,8 +262,8 @@ print_status() {
 main() {
     check_prerequisites
     setup_environment
+    setup_aws_credentials
     deploy_services
-    wait_for_services
     print_status
 }
 
