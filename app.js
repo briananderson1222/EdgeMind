@@ -2297,3 +2297,168 @@ function filterModalInsights(filterType, clickedTab) {
 
     applyInsightFilter(filterType, content, '.agent-modal-tabs .insight-tab', onModalAnomalyClick);
 }
+
+// Generic Card Modal Functions
+function expandCard(cardElement, title) {
+    const overlay = document.getElementById('card-modal-overlay');
+    const modalTitle = document.getElementById('card-modal-title');
+    const modalContent = document.getElementById('card-modal-content');
+
+    if (!overlay || !modalTitle || !modalContent || !cardElement) {
+        console.error('Card modal elements not found');
+        return;
+    }
+
+    // Clone card content (exclude title)
+    const clone = cardElement.cloneNode(true);
+    const titleEl = clone.querySelector('.card-title');
+    if (titleEl) titleEl.remove();
+
+    // Remove any IDs from cloned elements to avoid duplicates
+    const elementsWithIds = clone.querySelectorAll('[id]');
+    elementsWithIds.forEach(el => {
+        el.id = el.id + '-modal-clone';
+    });
+
+    modalTitle.textContent = title;
+    modalContent.innerHTML = '';
+    modalContent.appendChild(clone);
+
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    // Re-init charts if needed (for chart panels)
+    setTimeout(() => {
+        if (typeof reinitChartsInModal === 'function') {
+            reinitChartsInModal(modalContent);
+        }
+    }, 100);
+}
+
+// Reinitialize Chart.js charts in the modal
+function reinitChartsInModal(modalContent) {
+    const chartConfigs = [
+        {
+            originalId: 'oee-breakdown-chart',
+            chartInstance: window.oeeBreakdownChart
+        },
+        {
+            originalId: 'waste-trend-chart',
+            chartInstance: window.wasteTrendChart
+        },
+        {
+            originalId: 'scrap-by-line-chart',
+            chartInstance: window.scrapByLineChart
+        }
+    ];
+
+    chartConfigs.forEach(({ originalId, chartInstance }) => {
+        const clonedId = `${originalId}-modal-clone`;
+        const clonedCanvas = modalContent.querySelector(`#${clonedId}`);
+
+        // Only proceed if this chart exists in the modal AND the original chart exists
+        if (clonedCanvas && chartInstance) {
+            try {
+                // Get the parent container to maintain sizing
+                const parentContainer = clonedCanvas.parentElement;
+
+                // Create a new canvas element
+                const newCanvas = document.createElement('canvas');
+                newCanvas.id = clonedId;
+                newCanvas.style.maxHeight = '600px'; // Ensure proper sizing in modal
+
+                // Replace the cloned static canvas with new interactive canvas
+                clonedCanvas.replaceWith(newCanvas);
+
+                // Deep clone the chart configuration
+                const originalConfig = {
+                    type: chartInstance.config.type,
+                    data: JSON.parse(JSON.stringify(chartInstance.config.data)),
+                    options: JSON.parse(JSON.stringify(chartInstance.config.options))
+                };
+
+                // Restore non-serializable properties (like click handlers)
+                if (originalId === 'waste-trend-chart' && chartInstance.config.options.onClick) {
+                    originalConfig.options.onClick = (event, activeElements) => {
+                        if (activeElements.length > 0) {
+                            const index = activeElements[0].index;
+                            const newChart = Chart.getChart(clonedId);
+                            if (newChart) {
+                                const label = newChart.data.labels[index];
+                                const value = newChart.data.datasets[0].data[index];
+                                const enterprise = newChart.data.datasets[0].enterprises?.[index] || 'Unknown';
+                                alert(`Line: ${label}\nEnterprise: ${enterprise}\nTotal Waste/Defects: ${value}`);
+                            }
+                        }
+                    };
+                }
+
+                // Ensure responsive sizing in modal
+                if (!originalConfig.options.responsive) {
+                    originalConfig.options.responsive = true;
+                }
+                if (!originalConfig.options.maintainAspectRatio) {
+                    originalConfig.options.maintainAspectRatio = false;
+                }
+
+                // Create new interactive Chart.js instance
+                const ctx = newCanvas.getContext('2d');
+                new Chart(ctx, originalConfig);
+
+            } catch (error) {
+                console.error(`Failed to reinitialize chart ${originalId} in modal:`, error);
+            }
+        }
+    });
+}
+
+function closeCardModal() {
+    const overlay = document.getElementById('card-modal-overlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+// Event delegation for all expand buttons
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.expand-btn');
+    if (btn) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const cardId = btn.getAttribute('data-card-id');
+        const card = document.getElementById(cardId);
+
+        if (card) {
+            const titleEl = btn.closest('.card-title');
+            // Extract text without the button
+            const title = titleEl ? Array.from(titleEl.childNodes)
+                .filter(node => node.nodeType === Node.TEXT_NODE)
+                .map(node => node.textContent.trim())
+                .join(' ').trim() : 'Card Details';
+
+            expandCard(card, title);
+        }
+    }
+});
+
+// Close on escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const cardModalOverlay = document.getElementById('card-modal-overlay');
+        if (cardModalOverlay && cardModalOverlay.classList.contains('active')) {
+            closeCardModal();
+        }
+    }
+});
+
+// Close on backdrop click
+const cardModalOverlay = document.getElementById('card-modal-overlay');
+if (cardModalOverlay) {
+    cardModalOverlay.addEventListener('click', (e) => {
+        if (e.target.id === 'card-modal-overlay') {
+            closeCardModal();
+        }
+    });
+}
