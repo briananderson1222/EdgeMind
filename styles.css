@@ -135,6 +135,7 @@
             font-size: 1rem;
             color: var(--accent-amber);
             margin-top: 10px;
+            margin-bottom: 10px;
             letter-spacing: 3px;
             text-transform: uppercase;
         }
@@ -741,7 +742,7 @@
             display: flex;
             gap: 10px;
             margin-bottom: 15px;
-            align-items: center;
+            align-items: flex-start;
         }
         
         .event-filter-tabs {
@@ -755,7 +756,7 @@
         .event-filter-tabs::-webkit-scrollbar { height: 4px; }
         .event-filter-tabs::-webkit-scrollbar-thumb { background: var(--accent-cyan); border-radius: 2px; }
         
-        .pause-btn { flex-shrink: 0; }
+        .pause-btn { flex-shrink: 0; align-self: flex-start; }
 
         .event-tab {
             padding: 8px 16px;
@@ -866,10 +867,29 @@
 
         /* Factory Health Scorecard */
         .health-scorecard {
-            grid-column: span 6;
+            grid-column: span 3;
             height: 450px;
             display: flex;
             flex-direction: column;
+        }
+
+        .scorecard-site-selector {
+            margin-bottom: 15px;
+        }
+
+        .scorecard-site-selector select {
+            width: 100%;
+            padding: 8px 12px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .scorecard-site-selector select:hover {
+            border-color: var(--accent-cyan);
         }
 
         .scorecard-content {
@@ -2071,6 +2091,19 @@
             letter-spacing: 1px;
         }
 
+        .settings-label.toggle-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0;
+        }
+
+        .settings-label.toggle-label input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--accent-cyan);
+        }
+
         .settings-input {
             width: 100%;
             padding: 12px 15px;
@@ -2243,6 +2276,41 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
+            position: relative;
+        }
+
+        .chat-scroll-btn {
+            position: absolute;
+            bottom: 60px;
+            right: 15px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            color: #000;
+            border: none;
+            font-size: 1rem;
+            cursor: pointer;
+            opacity: 0;
+            transform: scale(0.8);
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chat-scroll-btn.visible {
+            opacity: 1;
+            transform: scale(1);
+            pointer-events: auto;
+        }
+
+        .chat-scroll-btn:hover {
+            background: #00ffff;
+            transform: scale(1.1);
         }
 
         .chat-messages::-webkit-scrollbar {
@@ -2669,37 +2737,82 @@
             top: 70px;
             right: 20px;
             z-index: 10001;
-            max-width: 380px;
+            max-width: 400px;
         }
         .toast-group {
-            background: linear-gradient(135deg, #dc3545, #a71d2a);
-            border-radius: 8px;
+            background: #1a1a2e;
+            border: 1px solid #dc3545;
+            border-radius: 10px;
             color: white;
             font-family: 'Rajdhani', sans-serif;
-            font-weight: 600;
             animation: slideInToast 0.3s ease;
             overflow: hidden;
+            box-shadow: 0 4px 20px rgba(220, 53, 69, 0.3);
         }
         .toast-group-header {
-            padding: 12px 16px;
+            padding: 10px 14px;
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #dc3545, #a71d2a);
+            font-weight: 600;
         }
-        .toast-group-header:hover { background: rgba(255,255,255,0.1); }
-        .toast-group-count { background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 10px; font-size: 0.85rem; }
+        .toast-group-header:hover { background: linear-gradient(135deg, #e04555, #b72535); }
+        .toast-group-header > span:first-child { flex: 1; }
+        .toast-group-chevron {
+            font-size: 0.7rem;
+            opacity: 0.8;
+            transition: transform 0.2s ease;
+        }
+        .toast-group.expanded .toast-group-chevron { transform: rotate(180deg); }
         .toast-group-items { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
-        .toast-group.expanded .toast-group-items { max-height: 300px; overflow-y: auto; }
+        .toast-group.expanded .toast-group-items { max-height: 350px; overflow-y: auto; }
         .toast-group-item {
-            padding: 10px 16px;
-            border-top: 1px solid rgba(255,255,255,0.2);
+            padding: 10px 14px;
+            border-top: 1px solid rgba(220, 53, 69, 0.3);
+            background: rgba(220, 53, 69, 0.08);
+        }
+        .toast-group-item:hover { background: rgba(220, 53, 69, 0.15); }
+        .toast-item-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 10px;
+            margin-bottom: 6px;
         }
-        .toast-group-item span { flex: 1; }
+        .toast-item-machine {
+            font-weight: 600;
+            color: #ff6b6b;
+            font-size: 0.95rem;
+        }
+        .toast-item-hierarchy {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+        .toast-item-reason {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .toast-action-btn {
+            background: rgba(0, 255, 255, 0.15);
+            border: 1px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .toast-action-btn:hover {
+            background: var(--accent-cyan);
+            color: #000;
+        }
         .toast {
             padding: 12px 20px;
             border-radius: 8px;
@@ -2745,13 +2858,42 @@
             text-align: center;
         }
 
-        /* Energy card */
+        /* Stacked column for alerts + energy */
+        .stacked-column {
+            grid-column: span 3;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: 450px;
+        }
+        .active-alerts-card {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: linear-gradient(135deg, rgba(255, 107, 53, 0.1), rgba(220, 53, 69, 0.05));
+            border: 1px solid rgba(255, 107, 53, 0.2);
+        }
+        .active-alerts-card .card-title {
+            flex-shrink: 0;
+        }
+        .active-alerts-card #active-alerts-list {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
         .energy-card-full {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
             background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 165, 0, 0.05));
             border: 1px solid rgba(255, 215, 0, 0.2);
-            min-width: 280px;
         }
-        .energy-enterprises { display: flex; flex-direction: column; gap: 12px; }
+        .energy-card-full .card-title {
+            flex-shrink: 0;
+        }
+        .energy-enterprises { display: flex; flex-direction: column; gap: 12px; flex: 1; overflow-y: auto; min-height: 0; }
         .energy-empty { color: var(--text-dim); font-size: 0.85rem; text-align: center; padding: 20px; }
         .energy-enterprise-block {
             background: rgba(0, 0, 0, 0.2);

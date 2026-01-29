@@ -73,7 +73,7 @@
                 <div class="card-title">Anomalies</div>
                 <div class="metric-value" style="color: var(--accent-magenta);" id="anomaly-count">0</div>
                 <div class="metric-label">Detected by Claude</div>
-                <div class="metric-change negative">AI Analysis Active</div>
+                <div class="metric-change" id="ai-status">AI Analysis Active</div>
             </div>
 
             <!-- Active Alarms Card -->
@@ -81,14 +81,6 @@
                 <div class="card-title">Active Alarms</div>
                 <div class="metric-value alarm-value" id="alarm-count">0</div>
                 <div class="alarm-list" id="alarm-list"></div>
-            </div>
-
-            <!-- Energy Monitoring Card -->
-            <div class="card energy-card-full">
-                <div class="card-title">⚡ Power Monitoring</div>
-                <div class="energy-enterprises" id="energy-enterprises">
-                    <div class="energy-empty">Waiting for energy data...</div>
-                </div>
             </div>
 
             <!-- Factory Events -->
@@ -153,6 +145,11 @@
             <!-- Factory Health Scorecard -->
             <div class="card health-scorecard">
                 <div class="card-title">Factory Health Scorecard</div>
+                <div class="scorecard-site-selector">
+                    <select id="scorecard-site-select" onchange="onScorecardSiteChange()">
+                        <option value="">All Sites</option>
+                    </select>
+                </div>
                 <div class="scorecard-content">
                     <!-- OEE Gauge -->
                     <div class="oee-gauge-container">
@@ -183,20 +180,29 @@
                         </div>
                     </div>
 
-                    <!-- Active Alerts -->
-                    <div>
-                        <div style="font-size: 0.9rem; font-weight: 700; margin-bottom: 10px; color: var(--accent-cyan);">Active Alerts</div>
-                        <div id="active-alerts-list">
-                            <div class="alert-item info">
-                                <div class="alert-header">
-                                    <span class="alert-severity" style="color: var(--accent-cyan);">INFO</span>
-                                    <span class="alert-time">now</span>
-                                </div>
-                                <div class="alert-message">
-                                    System initializing. Connecting to MQTT broker...
-                                </div>
+                </div>
+            </div>
+
+            <!-- Stacked: Active Alerts + Power Monitoring -->
+            <div class="stacked-column">
+                <div class="card active-alerts-card">
+                    <div class="card-title">🚨 Active Alerts</div>
+                    <div id="active-alerts-list">
+                        <div class="alert-item info">
+                            <div class="alert-header">
+                                <span class="alert-severity" style="color: var(--accent-cyan);">INFO</span>
+                                <span class="alert-time">now</span>
+                            </div>
+                            <div class="alert-message">
+                                System initializing. Connecting to MQTT broker...
                             </div>
                         </div>
+                    </div>
+                </div>
+                <div class="card energy-card-full">
+                    <div class="card-title">⚡ Power Monitoring</div>
+                    <div class="energy-enterprises" id="energy-enterprises">
+                        <div class="energy-empty">Waiting for energy data...</div>
                     </div>
                 </div>
             </div>
@@ -360,6 +366,12 @@
                 <div class="settings-group">
                     <label class="settings-label">Defect Rate Critical (%) - Above this triggers critical</label>
                     <input type="number" id="setting-defectRateCritical" class="settings-input" min="0" max="100" step="0.1">
+                </div>
+                <div class="settings-group">
+                    <label class="settings-label toggle-label">
+                        <span>Equipment Down Notifications</span>
+                        <input type="checkbox" id="setting-notifications" checked>
+                    </label>
                 </div>
                 <div class="settings-actions">
                     <button class="settings-save-btn" onclick="saveSettings()">Save Settings</button>
