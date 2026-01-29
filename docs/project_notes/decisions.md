@@ -410,4 +410,40 @@ capacity_provider_strategies=[
 
 ---
 
+### ADR-011: Frontend Navigation Bar for Persona-Driven Demo (2026-01-29)
+
+**Context:**
+- ProveIt! Conference demo (Feb 15) requires persona-driven storytelling
+- Demo scenarios document defines multiple views:
+  - COO/Executive: High-level organizational insights (Stefan's current UI)
+  - Plant Manager: Line-specific details (Harjat's dashboards via iframe)
+- Need seamless transitions between persona contexts during live presentation
+- Additional views needed: demo control panel, agent workflow visualization, manufacturing-specific views (filling line, mixing, packaging, palletizing)
+- Current frontend is a single-page dashboard with no navigation structure
+
+**Decision:**
+- Add a navigation bar to the frontend for switching between persona views and demo features
+- Navbar must support:
+  1. Persona switching (COO view, Plant Manager view)
+  2. Demo control panel access
+  3. Navigation to manufacturing-specific views (Harjat's iframed dashboards)
+  4. Agent workflow visualization panel
+  5. Main dashboard (existing view)
+
+**Alternatives Considered:**
+- Tab-based switching within current layout → Rejected: doesn't support iframe embedding or deep navigation
+- URL-based routing only → Rejected: not presentation-friendly, requires typing URLs during demo
+- Side panel navigation → Rejected: takes horizontal space from dashboard data
+
+**Consequences:**
+- ✅ Smooth demo transitions between persona views
+- ✅ Natural place to embed Harjat's dashboards via iframe
+- ✅ Scalable for future views and features
+- ⚠️ Requires restructuring current single-page layout
+- ⚠️ Must integrate with existing WebSocket connections across views
+
+**Revisit:** After conference demo to evaluate if views should be separate pages or SPA routes
+
+---
+
 <!-- Add new decisions above this line -->

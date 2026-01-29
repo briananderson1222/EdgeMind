@@ -9,19 +9,91 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
-    <div class="live-badge" id="live-badge">● DISCONNECTED</div>
+<body data-theme="coo">
+    <!-- ========== COMMAND BAR ========== -->
+    <div class="command-bar">
+        <div class="command-bar__left">
+            <div class="logo">REPLY</div>
+            <div class="divider"></div>
+            <div class="title">EDGE MIND</div>
+        </div>
 
-    <div class="container">
-        <header>
-            <div class="reply-logo">REPLY</div>
-            <h1>EDGE MIND</h1>
-            <div class="subtitle">Command Center - LIVE DATA</div>
-            <div class="status-badge" id="system-status">● CONNECTING...</div>
-            <button class="settings-btn" onclick="openSettingsModal()">⚙ Settings</button>
-        </header>
+        <div class="command-bar__center">
+            <button class="persona-chip active" data-persona="coo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="4" y="4" width="16" height="16" rx="1"/>
+                    <line x1="8" y1="8" x2="8" y2="10"/>
+                    <line x1="12" y1="8" x2="12" y2="10"/>
+                    <line x1="16" y1="8" x2="16" y2="10"/>
+                    <line x1="8" y1="13" x2="8" y2="15"/>
+                    <line x1="12" y1="13" x2="12" y2="15"/>
+                    <line x1="16" y1="13" x2="16" y2="15"/>
+                </svg>
+                <span>COO</span>
+                <span class="persona-chip__shortcut">1</span>
+            </button>
 
-        <div class="dashboard-grid">
+            <button class="persona-chip" data-persona="plant">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                </svg>
+                <span>Plant Mgr</span>
+                <span class="persona-chip__shortcut">2</span>
+            </button>
+
+            <button class="persona-chip" data-persona="demo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+                </svg>
+                <span>Demo Ctrl</span>
+                <span class="persona-chip__shortcut">3</span>
+            </button>
+        </div>
+
+        <div class="command-bar__right">
+            <div class="status" id="system-status">
+                <div class="status__dot"></div>
+                <span>CONNECTING...</span>
+            </div>
+            <svg class="settings-icon" onclick="openSettingsModal()" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- ========== SUB-NAV BAR ========== -->
+    <div class="sub-nav">
+        <!-- COO Panel -->
+        <div class="sub-nav__panel active" data-panel="coo">
+            <button class="sub-nav__item active" data-view="coo-dashboard">Dashboard</button>
+            <button class="sub-nav__item" data-view="coo-enterprise">Enterprise Comparison</button>
+            <button class="sub-nav__item" data-view="coo-trends">Trend Analysis</button>
+            <button class="sub-nav__item" data-view="coo-agent">Agent Q&A</button>
+        </div>
+
+        <!-- Plant Manager Panel -->
+        <div class="sub-nav__panel" data-panel="plant">
+            <button class="sub-nav__item active" data-view="plant-line-status">Line Status</button>
+            <button class="sub-nav__item" data-view="plant-oee-drilldown">OEE Drill-down</button>
+            <button class="sub-nav__item" data-view="plant-equipment">Equipment Health</button>
+            <button class="sub-nav__item" data-view="plant-alerts">Alerts & Work Orders</button>
+        </div>
+
+        <!-- Demo Control Panel -->
+        <div class="sub-nav__panel" data-panel="demo">
+            <button class="sub-nav__item active" data-view="demo-scenarios">Scenario Selector</button>
+            <button class="sub-nav__item" data-view="demo-inject">Inject Anomaly</button>
+            <button class="sub-nav__item" data-view="demo-reset">Reset Data</button>
+            <button class="sub-nav__item" data-view="demo-timer">Timer</button>
+        </div>
+    </div>
+
+    <div class="content">
+        <!-- Existing Dashboard wrapped in persona-view -->
+        <div class="persona-view active" data-view="coo-dashboard">
+            <div class="dashboard-grid">
             <!-- Factory Selection -->
             <div class="card factory-overview" id="factory-overview">
                 <div class="card-title">
@@ -296,12 +368,107 @@
                 </div>
             </div>
         </div>
+        </div><!-- End coo-dashboard persona-view -->
 
-        <footer>
-            <div class="footer-logo">PROVEIT! CONFERENCE 2026</div>
-            <div>Powered by Claude AI • Real-time Factory Insights</div>
-        </footer>
-    </div>
+        <!-- ========== PLACEHOLDER PERSONA VIEWS ========== -->
+        <div class="persona-view" data-view="coo-enterprise">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">📊</div>
+                <div class="placeholder-view__title">Enterprise Comparison</div>
+                <div class="placeholder-view__subtitle">Cross-enterprise analytics view</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="coo-trends">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">📈</div>
+                <div class="placeholder-view__title">Trend Analysis</div>
+                <div class="placeholder-view__subtitle">Historical trend charts and insights</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="coo-agent">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">💬</div>
+                <div class="placeholder-view__title">Agent Q&A</div>
+                <div class="placeholder-view__subtitle">Conversational factory intelligence</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="plant-line-status">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">⚙️</div>
+                <div class="placeholder-view__title">Line Status</div>
+                <div class="placeholder-view__subtitle">Real-time production line monitoring</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="plant-oee-drilldown">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">🎯</div>
+                <div class="placeholder-view__title">OEE Drill-down</div>
+                <div class="placeholder-view__subtitle">Detailed OEE breakdown by line</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="plant-equipment">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">🔧</div>
+                <div class="placeholder-view__title">Equipment Health</div>
+                <div class="placeholder-view__subtitle">Asset condition and predictive maintenance</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="plant-alerts">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">🚨</div>
+                <div class="placeholder-view__title">Alerts & Work Orders</div>
+                <div class="placeholder-view__subtitle">Active alerts and maintenance tasks</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="demo-scenarios">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">🎬</div>
+                <div class="placeholder-view__title">Scenario Selector</div>
+                <div class="placeholder-view__subtitle">Pre-configured demo scenarios</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="demo-inject">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">💉</div>
+                <div class="placeholder-view__title">Inject Anomaly</div>
+                <div class="placeholder-view__subtitle">Manual anomaly injection controls</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="demo-reset">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">🔄</div>
+                <div class="placeholder-view__title">Reset Data</div>
+                <div class="placeholder-view__subtitle">Clear all factory data and metrics</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="demo-timer">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">⏱️</div>
+                <div class="placeholder-view__title">Presentation Timer</div>
+                <div class="placeholder-view__subtitle">Demo timing and countdown controls</div>
+            </div>
+        </div>
+    </div><!-- End .content -->
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="powered-by">Powered by</div>
+            <div class="reply-footer-logo">REPLY</div>
+            <div class="footer-divider"></div>
+            <div class="footer-tagline">Driving Digital Transformation</div>
+        </div>
+    </footer>
 
     <script src="app.js"></script>
 
@@ -433,14 +600,5 @@
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer>
-        <div class="footer-content">
-            <div class="powered-by">Powered by</div>
-            <div class="reply-footer-logo">REPLY</div>
-            <div class="footer-divider"></div>
-            <div class="footer-tagline">Driving Digital Transformation</div>
-        </div>
-    </footer>
 </body>
 </html>

@@ -1,5 +1,133 @@
 // REAL IMPLEMENTATION - Connects to actual backend
 
+// ========== PERSONA SYSTEM ==========
+// Separate from main state to avoid conflicts
+const personaState = {
+    activePersona: 'coo',
+    activeView: 'coo-dashboard'
+};
+
+const personaDefaults = {
+    coo: 'coo-dashboard',
+    plant: 'plant-line-status',
+    demo: 'demo-scenarios'
+};
+
+let switchCounter = 0;
+
+/**
+ * Switch active persona (COO, Plant Manager, Demo Control)
+ * Updates theme, active chip, sub-nav panel, and switches to default view
+ */
+function switchPersona(key) {
+    if (key === personaState.activePersona) return; // no-op if already active
+
+    personaState.activePersona = key;
+    const currentSwitch = ++switchCounter;
+
+    // Update body theme attribute
+    const themeMap = { coo: 'coo', plant: 'plant', demo: 'demo' };
+    document.body.setAttribute('data-theme', themeMap[key]);
+
+    // Update active chip
+    document.querySelectorAll('.persona-chip').forEach(chip => {
+        chip.classList.remove('active');
+        if (chip.dataset.persona === key) {
+            chip.classList.add('active');
+        }
+    });
+
+    // Switch sub-nav panel with transition
+    document.querySelectorAll('.sub-nav__panel').forEach(panel => {
+        if (panel.dataset.panel === key) {
+            panel.style.display = 'flex';
+            setTimeout(() => {
+                if (currentSwitch !== switchCounter) return;
+                panel.classList.add('active');
+            }, 10);
+        } else {
+            panel.classList.remove('active');
+            setTimeout(() => {
+                if (currentSwitch !== switchCounter) return;
+                panel.style.display = 'none';
+            }, 200);
+        }
+    });
+
+    // Switch to default view for persona
+    const defaultView = personaDefaults[key];
+    switchPersonaView(defaultView);
+}
+
+/**
+ * Switch view within current persona
+ * Updates active sub-nav item and shows/hides persona-view divs
+ */
+function switchPersonaView(viewKey) {
+    personaState.activeView = viewKey;
+
+    // Update active sub-nav item
+    const activePanel = document.querySelector(`.sub-nav__panel[data-panel="${personaState.activePersona}"]`);
+    if (activePanel) {
+        activePanel.querySelectorAll('.sub-nav__item').forEach(item => {
+            item.classList.remove('active');
+            if (item.dataset.view === viewKey) {
+                item.classList.add('active');
+            }
+        });
+    }
+
+    // Show/hide persona views
+    document.querySelectorAll('.persona-view').forEach(view => {
+        if (view.dataset.view === viewKey) {
+            view.classList.add('active');
+
+            // If returning to coo-dashboard, resize charts
+            if (viewKey === 'coo-dashboard') {
+                setTimeout(() => {
+                    if (window.oeeBreakdownChart) window.oeeBreakdownChart.resize();
+                    if (window.wasteTrendChart) window.wasteTrendChart.resize();
+                    if (window.scrapByLineChart) window.scrapByLineChart.resize();
+                }, 100);
+            }
+        } else {
+            view.classList.remove('active');
+        }
+    });
+}
+
+// Initialize persona system on DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+    // Persona chip clicks
+    document.querySelectorAll('.persona-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            switchPersona(chip.dataset.persona);
+        });
+    });
+
+    // Sub-nav item clicks
+    document.querySelectorAll('.sub-nav__item').forEach(item => {
+        item.addEventListener('click', () => {
+            switchPersonaView(item.dataset.view);
+        });
+    });
+
+    // Keyboard shortcuts (1, 2, 3)
+    document.addEventListener('keydown', (e) => {
+        // Only if not typing in input/textarea/contenteditable
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.target.isContentEditable) return;
+
+        const keyMap = { '1': 'coo', '2': 'plant', '3': 'demo' };
+        if (keyMap[e.key]) {
+            switchPersona(keyMap[e.key]);
+        }
+    });
+
+    // Initialize to COO persona
+    switchPersona('coo');
+});
+
 // Cheeky messages when insights are disabled
 const SLEEPING_AGENT_MESSAGES = [
     "The AI is taking a power nap. Data collection continues.",
@@ -571,8 +699,14 @@ function connectWebSocket() {
             reconnectInterval = null;
         }
 
-        // Update system status
-        document.getElementById('system-status').textContent = '● SYSTEM ONLINE';
+        // Update system status (new structure: dot + span)
+        const statusEl = document.getElementById('system-status');
+        if (statusEl) {
+            const statusDot = statusEl.querySelector('.status__dot');
+            const statusText = statusEl.querySelector('span');
+            if (statusDot) statusDot.style.background = 'var(--accent-green)';
+            if (statusText) statusText.textContent = 'SYSTEM ONLINE';
+        }
         document.getElementById('agent-state').textContent = '● Monitoring factory data streams';
     };
 
@@ -593,7 +727,13 @@ function connectWebSocket() {
         console.log('🔌 Disconnected from backend');
         isConnected = false;
         updateConnectionStatus(false);
-        document.getElementById('system-status').textContent = '● RECONNECTING...';
+        const statusEl = document.getElementById('system-status');
+        if (statusEl) {
+            const statusDot = statusEl.querySelector('.status__dot');
+            const statusText = statusEl.querySelector('span');
+            if (statusDot) statusDot.style.background = 'var(--accent-red)';
+            if (statusText) statusText.textContent = 'RECONNECTING...';
+        }
 
         // Attempt to reconnect
         if (!reconnectInterval) {
@@ -1111,23 +1251,27 @@ function updateConnectionStatus(connected) {
     const dataIndicator = document.getElementById('data-indicator');
 
     if (connected) {
-        badge.textContent = '● LIVE';
-        badge.style.borderColor = 'var(--accent-green)';
-        badge.style.color = 'var(--accent-green)';
-        badge.style.background = 'rgba(0, 255, 136, 0.2)';
+        if (badge) {
+            badge.textContent = '● LIVE';
+            badge.style.borderColor = 'var(--accent-green)';
+            badge.style.color = 'var(--accent-green)';
+            badge.style.background = 'rgba(0, 255, 136, 0.2)';
+        }
 
-        mqttIndicator.classList.remove('disconnected');
-        claudeIndicator.classList.remove('disconnected');
-        dataIndicator.classList.remove('disconnected');
+        if (mqttIndicator) mqttIndicator.classList.remove('disconnected');
+        if (claudeIndicator) claudeIndicator.classList.remove('disconnected');
+        if (dataIndicator) dataIndicator.classList.remove('disconnected');
     } else {
-        badge.textContent = '● DISCONNECTED';
-        badge.style.borderColor = 'var(--accent-red)';
-        badge.style.color = 'var(--accent-red)';
-        badge.style.background = 'rgba(255, 0, 0, 0.2)';
+        if (badge) {
+            badge.textContent = '● DISCONNECTED';
+            badge.style.borderColor = 'var(--accent-red)';
+            badge.style.color = 'var(--accent-red)';
+            badge.style.background = 'rgba(255, 0, 0, 0.2)';
+        }
 
-        mqttIndicator.classList.add('disconnected');
-        claudeIndicator.classList.add('disconnected');
-        dataIndicator.classList.add('disconnected');
+        if (mqttIndicator) mqttIndicator.classList.add('disconnected');
+        if (claudeIndicator) claudeIndicator.classList.add('disconnected');
+        if (dataIndicator) dataIndicator.classList.add('disconnected');
     }
 }
 

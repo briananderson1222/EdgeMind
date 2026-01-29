@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edge Mind - Navigation Prototype</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@300;500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+  <style>
+    /* ========== CSS CUSTOM PROPERTIES ========== */
+    :root {
+      --bg-dark: #0a0e1a;
+      --bg-card: #141824;
+      --accent-cyan: #00ffff;
+      --accent-magenta: #ff00ff;
+      --accent-amber: #ffbf00;
+      --accent-green: #00ff88;
+      --accent-red: #ff3366;
+      --reply-red: #E31937;
+      --text-primary: #e8e8e8;
+      --text-dim: #6b7280;
+      --persona-color: var(--accent-cyan);
+      --persona-color-rgb: 0, 255, 255;
+    }
+
+    [data-theme="coo"] {
+      --persona-color: #00ffff;
+      --persona-color-rgb: 0, 255, 255;
+    }
+
+    [data-theme="plant"] {
+      --persona-color: #00ff88;
+      --persona-color-rgb: 0, 255, 136;
+    }
+
+    [data-theme="demo"] {
+      --persona-color: #ffbf00;
+      --persona-color-rgb: 255, 191, 0;
+    }
+
+    /* ========== GLOBAL RESET ========== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      overflow-x: hidden;
+      position: relative;
+      min-height: 100vh;
+    }
+
+    /* ========== BACKGROUND EFFECTS ========== */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image:
+        linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 50px 50px;
+      pointer-events: none;
+      z-index: 0;
+      animation: grid-scroll 20s linear infinite;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 255, 255, 0.03) 0px,
+        transparent 2px,
+        transparent 4px
+      );
+      pointer-events: none;
+      z-index: 1000;
+      animation: scanline 8s linear infinite;
+    }
+
+    @keyframes grid-scroll {
+      0% { background-position: 0 0; }
+      100% { background-position: 0 50px; }
+    }
+
+    @keyframes scanline {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(4px); }
+    }
+
+    /* ========== COMMAND BAR ========== */
+    .command-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 48px;
+      background: var(--bg-dark);
+      border-bottom: 1px solid rgba(0, 255, 255, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 100;
+    }
+
+    .command-bar__left,
+    .command-bar__right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 240px;
+    }
+
+    .command-bar__center {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      font-size: 0.95rem;
+      color: var(--reply-red);
+      letter-spacing: 4px;
+    }
+
+    .divider {
+      width: 1px;
+      height: 24px;
+      background: rgba(0, 255, 255, 0.2);
+    }
+
+    .title {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 3px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-magenta));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ========== PERSONA CHIPS ========== */
+    .persona-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 14px;
+      border-radius: 16px;
+      border: 1px solid;
+      background: transparent;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      color: var(--text-dim);
+      border-color: rgba(0, 255, 255, 0.15);
+    }
+
+    .persona-chip svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    .persona-chip__shortcut {
+      opacity: 0.5;
+      font-size: 0.7rem;
+      margin-left: 2px;
+    }
+
+    /* COO - Cyan */
+    .persona-chip[data-persona="coo"]:hover {
+      background: rgba(0, 255, 255, 0.08);
+      color: var(--accent-cyan);
+      border-color: rgba(0, 255, 255, 0.4);
+    }
+
+    .persona-chip[data-persona="coo"].active {
+      background: rgba(0, 255, 255, 0.15);
+      color: var(--accent-cyan);
+      border-color: rgba(0, 255, 255, 0.6);
+      box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+      animation: pulse-cyan 3s ease-in-out infinite;
+    }
+
+    /* Plant Manager - Green */
+    .persona-chip[data-persona="plant"]:hover {
+      background: rgba(0, 255, 136, 0.08);
+      color: var(--accent-green);
+      border-color: rgba(0, 255, 136, 0.4);
+    }
+
+    .persona-chip[data-persona="plant"].active {
+      background: rgba(0, 255, 136, 0.15);
+      color: var(--accent-green);
+      border-color: rgba(0, 255, 136, 0.6);
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+      animation: pulse-green 3s ease-in-out infinite;
+    }
+
+    /* Demo Control - Amber */
+    .persona-chip[data-persona="demo"]:hover {
+      background: rgba(255, 191, 0, 0.08);
+      color: var(--accent-amber);
+      border-color: rgba(255, 191, 0, 0.4);
+    }
+
+    .persona-chip[data-persona="demo"].active {
+      background: rgba(255, 191, 0, 0.15);
+      color: var(--accent-amber);
+      border-color: rgba(255, 191, 0, 0.6);
+      box-shadow: 0 0 20px rgba(255, 191, 0, 0.3);
+      animation: pulse-amber 3s ease-in-out infinite;
+    }
+
+    /* Active accent line */
+    .persona-chip.active::after {
+      content: '';
+      position: absolute;
+      bottom: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 20px;
+      height: 2px;
+      background: currentColor;
+    }
+
+    @keyframes pulse-cyan {
+      0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.3); }
+      50% { box-shadow: 0 0 30px rgba(0, 255, 255, 0.5); }
+    }
+
+    @keyframes pulse-green {
+      0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
+      50% { box-shadow: 0 0 30px rgba(0, 255, 136, 0.5); }
+    }
+
+    @keyframes pulse-amber {
+      0%, 100% { box-shadow: 0 0 20px rgba(255, 191, 0, 0.3); }
+      50% { box-shadow: 0 0 30px rgba(255, 191, 0, 0.5); }
+    }
+
+    /* ========== STATUS INDICATOR ========== */
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent-green);
+    }
+
+    .status__dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { box-shadow: 0 0 8px rgba(0, 255, 136, 0.6); }
+      50% { box-shadow: 0 0 16px rgba(0, 255, 136, 0.9); }
+    }
+
+    .settings-icon {
+      width: 20px;
+      height: 20px;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .settings-icon:hover {
+      color: var(--accent-cyan);
+      transform: rotate(45deg);
+    }
+
+    /* ========== SUB-NAV BAR ========== */
+    .sub-nav {
+      position: fixed;
+      top: 48px;
+      left: 0;
+      width: 100%;
+      height: 40px;
+      background: var(--bg-card);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      z-index: 99;
+    }
+
+    .sub-nav__panel {
+      display: none;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .sub-nav__panel.active {
+      display: flex;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .sub-nav__item {
+      height: 28px;
+      padding: 0 12px;
+      border-radius: 4px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border: none;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      position: relative;
+    }
+
+    .sub-nav__item:hover {
+      color: var(--persona-color);
+      background: rgba(var(--persona-color-rgb), 0.08);
+    }
+
+    .sub-nav__item.active {
+      color: var(--persona-color);
+      background: rgba(var(--persona-color-rgb), 0.12);
+    }
+
+    .sub-nav__item.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--persona-color);
+    }
+
+    /* ========== CONTENT AREA ========== */
+    .content {
+      margin-top: 88px;
+      max-width: 1800px;
+      margin-left: auto;
+      margin-right: auto;
+      padding: 24px 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .view {
+      display: none;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 20px;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .view.active {
+      display: grid;
+      opacity: 1;
+    }
+
+    /* ========== CARDS ========== */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid rgba(0, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 25px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card__title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--persona-color);
+      margin-bottom: 20px;
+    }
+
+    .card__subtitle {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+
+    /* Placeholder shimmer bars */
+    .shimmer-bar {
+      height: 12px;
+      background: linear-gradient(
+        90deg,
+        rgba(var(--persona-color-rgb), 0.1) 0%,
+        rgba(var(--persona-color-rgb), 0.2) 50%,
+        rgba(var(--persona-color-rgb), 0.1) 100%
+      );
+      background-size: 200% 100%;
+      animation: shimmer 2s ease-in-out infinite;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+
+    .shimmer-bar.w-100 { width: 100%; }
+    .shimmer-bar.w-75 { width: 75%; }
+    .shimmer-bar.w-50 { width: 50%; }
+
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    /* Grid helpers */
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .col-3 { grid-column: 3; }
+    .col-4 { grid-column: 4; }
+
+    /* ========== METRIC CARDS ========== */
+    .metric-card {
+      text-align: center;
+    }
+
+    .metric-card__value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2.5rem;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .metric-card__label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+    }
+
+    .metric-card.green .metric-card__value { color: var(--accent-green); }
+    .metric-card.amber .metric-card__value { color: var(--accent-amber); }
+    .metric-card.magenta .metric-card__value { color: var(--accent-magenta); }
+    .metric-card.red .metric-card__value { color: var(--accent-red); }
+
+    /* ========== EQUIPMENT GRID ========== */
+    .equipment-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .equipment-cell {
+      height: 24px;
+      border-radius: 4px;
+    }
+
+    .equipment-cell.running { background: rgba(0, 255, 136, 0.3); }
+    .equipment-cell.idle { background: rgba(255, 191, 0, 0.3); }
+    .equipment-cell.down { background: rgba(255, 51, 102, 0.3); }
+
+    /* ========== HEALTH BAR ========== */
+    .health-bar {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      margin: 16px 0;
+      overflow: hidden;
+    }
+
+    .health-bar__fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-green), var(--accent-amber), var(--accent-red));
+      border-radius: 4px;
+    }
+
+    .rul-text {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    /* ========== ALERT ROWS ========== */
+    .alert-row {
+      padding: 12px;
+      border-left: 3px solid;
+      background: rgba(255, 255, 255, 0.03);
+      margin-bottom: 8px;
+      border-radius: 4px;
+    }
+
+    .alert-row.red { border-left-color: var(--accent-red); }
+    .alert-row.amber { border-left-color: var(--accent-amber); }
+    .alert-row.cyan { border-left-color: var(--accent-cyan); }
+
+    /* ========== SCENARIO CARDS ========== */
+    .scenario-card {
+      position: relative;
+      padding-top: 40px;
+    }
+
+    .scenario-card__badge {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      width: 28px;
+      height: 28px;
+      background: var(--accent-amber);
+      color: var(--bg-dark);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      font-size: 0.9rem;
+    }
+
+    .scenario-card__name {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .scenario-card__meta {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    .scenario-card__equipment {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent-amber);
+      margin-bottom: 8px;
+    }
+
+    .scenario-card__highlight {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid;
+      background: transparent;
+    }
+
+    .btn.amber-outline {
+      color: var(--accent-amber);
+      border-color: var(--accent-amber);
+    }
+
+    .btn.amber-outline:hover {
+      background: var(--accent-amber);
+      color: var(--bg-dark);
+    }
+
+    .btn.amber-filled {
+      background: var(--accent-amber);
+      color: var(--bg-dark);
+      border-color: var(--accent-amber);
+    }
+
+    .btn.amber-filled:hover {
+      background: transparent;
+      color: var(--accent-amber);
+    }
+
+    .btn.red {
+      background: var(--accent-red);
+      color: var(--text-primary);
+      border-color: var(--accent-red);
+    }
+
+    .btn.red:hover {
+      background: transparent;
+      color: var(--accent-red);
+    }
+
+    .btn.green {
+      background: var(--accent-green);
+      color: var(--bg-dark);
+      border-color: var(--accent-green);
+    }
+
+    .btn.green:hover {
+      background: transparent;
+      color: var(--accent-green);
+    }
+
+    .btn.dim {
+      color: var(--text-dim);
+      border-color: var(--text-dim);
+    }
+
+    .btn.dim:hover {
+      color: var(--text-primary);
+      border-color: var(--text-primary);
+    }
+
+    /* ========== TIMER ========== */
+    .timer-display {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 4rem;
+      text-align: center;
+      color: var(--persona-color);
+      margin: 30px 0;
+      letter-spacing: 8px;
+    }
+
+    .timer-controls {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    /* ========== CHAT AREA ========== */
+    .chat-bubble {
+      padding: 12px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      margin-bottom: 12px;
+    }
+
+    .chat-input-bar {
+      margin-top: 16px;
+      height: 40px;
+      border-radius: 4px;
+      border: 1px solid rgba(var(--persona-color-rgb), 0.3);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    /* ========== SUGGESTED QUERIES ========== */
+    .query-button {
+      padding: 12px;
+      border-radius: 4px;
+      background: rgba(var(--persona-color-rgb), 0.08);
+      border: 1px solid rgba(var(--persona-color-rgb), 0.3);
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .query-button:hover {
+      background: rgba(var(--persona-color-rgb), 0.15);
+      border-color: rgba(var(--persona-color-rgb), 0.5);
+    }
+
+    /* ========== OEE BREAKDOWN ========== */
+    .oee-section {
+      padding: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .oee-section:last-child {
+      border-bottom: none;
+    }
+
+    .oee-section__label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+
+    .oee-section__value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: var(--persona-color);
+    }
+
+    /* ========== CHART PLACEHOLDERS ========== */
+    .chart-placeholder {
+      height: 250px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+
+    .chart-placeholder.tall { height: 280px; }
+    .chart-placeholder.short { height: 200px; }
+    .chart-placeholder.wide { height: 300px; }
+
+    /* ========== WORK ORDER STATUS ========== */
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-badge.pending {
+      background: rgba(255, 191, 0, 0.2);
+      color: var(--accent-amber);
+    }
+
+    .status-badge.in-progress {
+      background: rgba(0, 255, 255, 0.2);
+      color: var(--accent-cyan);
+    }
+
+    /* ========== WARNING ICON ========== */
+    .warning-icon {
+      width: 60px;
+      height: 60px;
+      margin: 20px auto;
+      color: var(--accent-red);
+    }
+
+    .warning-text {
+      text-align: center;
+      color: var(--text-dim);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    /* ========== DROPDOWN PLACEHOLDER ========== */
+    .dropdown-placeholder {
+      height: 40px;
+      border-radius: 4px;
+      border: 1px solid rgba(var(--persona-color-rgb), 0.3);
+      background: rgba(255, 255, 255, 0.03);
+      margin-bottom: 12px;
+    }
+
+    .tree-placeholder {
+      height: 200px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* ========== SLIDER PLACEHOLDER ========== */
+    .slider-placeholder {
+      height: 40px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body data-theme="coo">
+
+  <!-- ========== COMMAND BAR ========== -->
+  <div class="command-bar">
+    <div class="command-bar__left">
+      <div class="logo">REPLY</div>
+      <div class="divider"></div>
+      <div class="title">EDGE MIND</div>
+    </div>
+
+    <div class="command-bar__center">
+      <button class="persona-chip active" data-persona="coo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="4" y="4" width="16" height="16" rx="1"/>
+          <line x1="8" y1="8" x2="8" y2="10"/>
+          <line x1="12" y1="8" x2="12" y2="10"/>
+          <line x1="16" y1="8" x2="16" y2="10"/>
+          <line x1="8" y1="13" x2="8" y2="15"/>
+          <line x1="12" y1="13" x2="12" y2="15"/>
+          <line x1="16" y1="13" x2="16" y2="15"/>
+        </svg>
+        <span>COO</span>
+        <span class="persona-chip__shortcut">1</span>
+      </button>
+
+      <button class="persona-chip" data-persona="plant">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        </svg>
+        <span>Plant Mgr</span>
+        <span class="persona-chip__shortcut">2</span>
+      </button>
+
+      <button class="persona-chip" data-persona="demo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="10"/>
+          <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+        </svg>
+        <span>Demo Ctrl</span>
+        <span class="persona-chip__shortcut">3</span>
+      </button>
+    </div>
+
+    <div class="command-bar__right">
+      <div class="status">
+        <div class="status__dot"></div>
+        <span>LIVE</span>
+      </div>
+      <svg class="settings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ========== SUB-NAV BAR ========== -->
+  <div class="sub-nav">
+    <!-- COO Panel -->
+    <div class="sub-nav__panel active" data-panel="coo">
+      <button class="sub-nav__item active" data-view="dashboard">Dashboard</button>
+      <button class="sub-nav__item" data-view="enterprise">Enterprise Comparison</button>
+      <button class="sub-nav__item" data-view="trends">Trend Analysis</button>
+      <button class="sub-nav__item" data-view="agent">Agent Q&A</button>
+    </div>
+
+    <!-- Plant Manager Panel -->
+    <div class="sub-nav__panel" data-panel="plant">
+      <button class="sub-nav__item active" data-view="line-status">Line Status</button>
+      <button class="sub-nav__item" data-view="oee-drilldown">OEE Drill-down</button>
+      <button class="sub-nav__item" data-view="equipment">Equipment Health</button>
+      <button class="sub-nav__item" data-view="alerts">Alerts & Work Orders</button>
+    </div>
+
+    <!-- Demo Control Panel -->
+    <div class="sub-nav__panel" data-panel="demo">
+      <button class="sub-nav__item active" data-view="scenarios">Scenario Selector</button>
+      <button class="sub-nav__item" data-view="inject">Inject Anomaly</button>
+      <button class="sub-nav__item" data-view="reset">Reset Data</button>
+      <button class="sub-nav__item" data-view="timer">Timer</button>
+    </div>
+  </div>
+
+  <!-- ========== CONTENT AREA ========== -->
+  <div class="content">
+
+    <!-- ========== COO - DASHBOARD ========== -->
+    <div class="view active" data-view="dashboard">
+      <div class="card metric-card span-3">
+        <div class="card__title">Messages Received</div>
+        <div class="metric-card__value">24,847</div>
+        <div class="metric-card__label">Last 24 Hours</div>
+      </div>
+      <div class="card metric-card green span-3">
+        <div class="card__title">OEE Score</div>
+        <div class="metric-card__value">87.3%</div>
+        <div class="metric-card__label">Enterprise Average</div>
+      </div>
+      <div class="card metric-card amber span-3">
+        <div class="card__title">Active Sensors</div>
+        <div class="metric-card__value">412</div>
+        <div class="metric-card__label">Across 3 Enterprises</div>
+      </div>
+      <div class="card metric-card magenta span-3">
+        <div class="card__title">Anomalies</div>
+        <div class="metric-card__value">3</div>
+        <div class="metric-card__label">Detected Today</div>
+      </div>
+
+      <div class="card span-6">
+        <div class="card__title">Factory Health Scorecard</div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-75"></div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-50"></div>
+        <div class="shimmer-bar w-100"></div>
+      </div>
+
+      <div class="card span-6">
+        <div class="card__title">Claude AI Agent</div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-75"></div>
+        <div class="shimmer-bar w-50"></div>
+        <div class="shimmer-bar w-100"></div>
+      </div>
+    </div>
+
+    <!-- ========== COO - ENTERPRISE COMPARISON ========== -->
+    <div class="view" data-view="enterprise">
+      <div class="card span-4">
+        <div class="card__title">Enterprise A - Glass Manufacturing</div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-75"></div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-50"></div>
+      </div>
+      <div class="card span-4">
+        <div class="card__title">Enterprise B - Multi-Site Beverage</div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-75"></div>
+        <div class="shimmer-bar w-50"></div>
+      </div>
+      <div class="card span-4">
+        <div class="card__title">Enterprise C - Biotech Facility</div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-75"></div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-100"></div>
+      </div>
+
+      <div class="card span-12">
+        <div class="card__title">Cross-Enterprise Trend Comparison</div>
+        <div class="chart-placeholder wide">Production Trends Chart (24h)</div>
+      </div>
+    </div>
+
+    <!-- ========== COO - TREND ANALYSIS ========== -->
+    <div class="view" data-view="trends">
+      <div class="card span-6">
+        <div class="card__title">OEE by Enterprise</div>
+        <div class="chart-placeholder tall">OEE Comparison Chart</div>
+      </div>
+      <div class="card span-6">
+        <div class="card__title">Waste & Defect Trends</div>
+        <div class="chart-placeholder tall">Waste Trend Chart</div>
+      </div>
+
+      <div class="card span-12">
+        <div class="card__title">Production Heatmap</div>
+        <div class="chart-placeholder short">Hourly Production Heatmap</div>
+      </div>
+    </div>
+
+    <!-- ========== COO - AGENT Q&A ========== -->
+    <div class="view" data-view="agent">
+      <div class="card span-8">
+        <div class="card__title">Ask Agent</div>
+        <div class="chat-bubble">
+          <div class="shimmer-bar w-75"></div>
+          <div class="shimmer-bar w-100"></div>
+        </div>
+        <div class="chat-bubble">
+          <div class="shimmer-bar w-100"></div>
+          <div class="shimmer-bar w-50"></div>
+        </div>
+        <div class="chat-bubble">
+          <div class="shimmer-bar w-75"></div>
+        </div>
+        <div class="chat-input-bar"></div>
+      </div>
+
+      <div class="card span-4">
+        <div class="card__title">Suggested Queries</div>
+        <div class="query-button">
+          <div class="shimmer-bar w-100"></div>
+        </div>
+        <div class="query-button">
+          <div class="shimmer-bar w-100"></div>
+        </div>
+        <div class="query-button">
+          <div class="shimmer-bar w-100"></div>
+        </div>
+        <div class="query-button">
+          <div class="shimmer-bar w-100"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== PLANT MANAGER - LINE STATUS ========== -->
+    <div class="view" data-view="line-status">
+      <div class="card metric-card green span-4">
+        <div class="card__title">Running</div>
+        <div class="metric-card__value">18</div>
+        <div class="metric-card__label">Equipment Units</div>
+      </div>
+      <div class="card metric-card amber span-4">
+        <div class="card__title">Idle</div>
+        <div class="metric-card__value">5</div>
+        <div class="metric-card__label">Equipment Units</div>
+      </div>
+      <div class="card metric-card red span-4">
+        <div class="card__title">Down</div>
+        <div class="metric-card__value">2</div>
+        <div class="metric-card__label">Equipment Units</div>
+      </div>
+
+      <div class="card span-12">
+        <div class="card__title">Equipment State Monitor</div>
+        <div class="equipment-grid">
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell idle"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell down"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell idle"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell idle"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell idle"></div>
+          <div class="equipment-cell down"></div>
+          <div class="equipment-cell running"></div>
+          <div class="equipment-cell idle"></div>
+          <div class="equipment-cell running"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== PLANT MANAGER - OEE DRILL-DOWN ========== -->
+    <div class="view" data-view="oee-drilldown">
+      <div class="card span-8">
+        <div class="card__title">Production Line OEE</div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-75"></div>
+        <div class="shimmer-bar w-100"></div>
+        <div class="shimmer-bar w-50"></div>
+      </div>
+
+      <div class="card span-4">
+        <div class="card__title">OEE Breakdown</div>
+        <div class="oee-section">
+          <div class="oee-section__label">Availability</div>
+          <div class="oee-section__value">92.4%</div>
+        </div>
+        <div class="oee-section">
+          <div class="oee-section__label">Performance</div>
+          <div class="oee-section__value">88.7%</div>
+        </div>
+        <div class="oee-section">
+          <div class="oee-section__label">Quality</div>
+          <div class="oee-section__value">96.1%</div>
+        </div>
+      </div>
+
+      <div class="card span-12">
+        <div class="card__title">OEE Trend (24h)</div>
+        <div class="chart-placeholder">OEE Timeline Chart</div>
+      </div>
+    </div>
+
+    <!-- ========== PLANT MANAGER - EQUIPMENT HEALTH ========== -->
+    <div class="view" data-view="equipment">
+      <div class="card span-3">
+        <div class="card__title">Filler (23)</div>
+        <div class="health-bar">
+          <div class="health-bar__fill" style="width: 68%"></div>
+        </div>
+        <div class="rul-text">RUL: 142 hours</div>
+      </div>
+      <div class="card span-3">
+        <div class="card__title">Washer (24)</div>
+        <div class="health-bar">
+          <div class="health-bar__fill" style="width: 85%"></div>
+        </div>
+        <div class="rul-text">RUL: 287 hours</div>
+      </div>
+      <div class="card span-3">
+        <div class="card__title">Capper (22)</div>
+        <div class="health-bar">
+          <div class="health-bar__fill" style="width: 52%"></div>
+        </div>
+        <div class="rul-text">RUL: 89 hours</div>
+      </div>
+      <div class="card span-3">
+        <div class="card__title">Vat01 Jeff (31)</div>
+        <div class="health-bar">
+          <div class="health-bar__fill" style="width: 91%"></div>
+        </div>
+        <div class="rul-text">RUL: 412 hours</div>
+      </div>
+
+      <div class="card span-12">
+        <div class="card__title">Degradation Trends</div>
+        <div class="chart-placeholder">Equipment Health Trend Chart</div>
+      </div>
+    </div>
+
+    <!-- ========== PLANT MANAGER - ALERTS & WORK ORDERS ========== -->
+    <div class="view" data-view="alerts">
+      <div class="card span-7">
+        <div class="card__title">Active Alerts</div>
+        <div class="alert-row red">
+          <div class="shimmer-bar w-75"></div>
+          <div class="shimmer-bar w-50"></div>
+        </div>
+        <div class="alert-row red">
+          <div class="shimmer-bar w-100"></div>
+          <div class="shimmer-bar w-75"></div>
+        </div>
+        <div class="alert-row amber">
+          <div class="shimmer-bar w-75"></div>
+          <div class="shimmer-bar w-100"></div>
+        </div>
+        <div class="alert-row cyan">
+          <div class="shimmer-bar w-50"></div>
+          <div class="shimmer-bar w-75"></div>
+        </div>
+      </div>
+
+      <div class="card span-5">
+        <div class="card__title">Pending Work Orders</div>
+        <div style="margin-bottom: 16px;">
+          <div class="shimmer-bar w-100"></div>
+          <div class="shimmer-bar w-75"></div>
+          <span class="status-badge pending">Pending</span>
+        </div>
+        <div style="margin-bottom: 16px;">
+          <div class="shimmer-bar w-100"></div>
+          <div class="shimmer-bar w-50"></div>
+          <span class="status-badge in-progress">In Progress</span>
+        </div>
+        <div>
+          <div class="shimmer-bar w-75"></div>
+          <div class="shimmer-bar w-100"></div>
+          <span class="status-badge pending">Pending</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== DEMO CONTROL - SCENARIO SELECTOR ========== -->
+    <div class="view" data-view="scenarios">
+      <div class="card scenario-card span-4">
+        <div class="scenario-card__badge">1</div>
+        <div class="scenario-card__name">Filler Vibration Anomaly</div>
+        <div class="scenario-card__meta">Duration: 4 min</div>
+        <div class="scenario-card__equipment">Filler (23)</div>
+        <div class="scenario-card__highlight">Real-time detection</div>
+        <button class="btn amber-outline">LAUNCH</button>
+      </div>
+
+      <div class="card scenario-card span-4">
+        <div class="scenario-card__badge">2</div>
+        <div class="scenario-card__name">Mixing Vat Temperature Drift</div>
+        <div class="scenario-card__meta">Duration: 4 min</div>
+        <div class="scenario-card__equipment">Vat01 Jeff (31)</div>
+        <div class="scenario-card__highlight">Process parameter</div>
+        <button class="btn amber-outline">LAUNCH</button>
+      </div>
+
+      <div class="card scenario-card span-4">
+        <div class="scenario-card__badge">3</div>
+        <div class="scenario-card__name">Capper Torque Degradation</div>
+        <div class="scenario-card__meta">Duration: 4 min</div>
+        <div class="scenario-card__equipment">CapLoader (22)</div>
+        <div class="scenario-card__highlight">Predictive maintenance</div>
+        <button class="btn amber-outline">LAUNCH</button>
+      </div>
+
+      <div class="card scenario-card span-4">
+        <div class="scenario-card__badge">4</div>
+        <div class="scenario-card__name">Line Cascade Prevention</div>
+        <div class="scenario-card__meta">Duration: 5 min</div>
+        <div class="scenario-card__equipment">FillingLine01 (7)</div>
+        <div class="scenario-card__highlight">Multi-agent</div>
+        <button class="btn amber-outline">LAUNCH</button>
+      </div>
+
+      <div class="card scenario-card span-4">
+        <div class="scenario-card__badge">5</div>
+        <div class="scenario-card__name">Quality Root Cause Analysis</div>
+        <div class="scenario-card__meta">Duration: 3 min</div>
+        <div class="scenario-card__equipment">Cross-line</div>
+        <div class="scenario-card__highlight">AI investigation</div>
+        <button class="btn amber-outline">LAUNCH</button>
+      </div>
+
+      <div class="card scenario-card span-4">
+        <div class="scenario-card__badge">6</div>
+        <div class="scenario-card__name">Natural Language Interface</div>
+        <div class="scenario-card__meta">Duration: 3 min</div>
+        <div class="scenario-card__equipment">All assets</div>
+        <div class="scenario-card__highlight">Conversational queries</div>
+        <button class="btn amber-outline">LAUNCH</button>
+      </div>
+    </div>
+
+    <!-- ========== DEMO CONTROL - INJECT ANOMALY ========== -->
+    <div class="view" data-view="inject">
+      <div class="card span-6">
+        <div class="card__title">Select Equipment</div>
+        <div class="dropdown-placeholder"></div>
+        <div class="tree-placeholder"></div>
+      </div>
+
+      <div class="card span-6">
+        <div class="card__title">Anomaly Parameters</div>
+        <div class="card__subtitle">Severity</div>
+        <div class="slider-placeholder"></div>
+        <div class="card__subtitle">Duration (seconds)</div>
+        <div class="slider-placeholder"></div>
+        <div class="card__subtitle">Pattern Type</div>
+        <div class="slider-placeholder"></div>
+        <button class="btn amber-filled" style="margin-top: 20px;">INJECT ANOMALY</button>
+      </div>
+    </div>
+
+    <!-- ========== DEMO CONTROL - RESET DATA ========== -->
+    <div class="view" data-view="reset">
+      <div class="card col-4 span-6">
+        <div class="card__title">Reset Factory Data</div>
+        <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div class="warning-text">
+          This will clear all factory data, reset OEE metrics, and remove all active alerts and anomalies. This action cannot be undone.
+        </div>
+        <div class="button-group">
+          <button class="btn red">RESET ALL</button>
+          <button class="btn dim">CANCEL</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== DEMO CONTROL - TIMER ========== -->
+    <div class="view" data-view="timer">
+      <div class="card col-3 span-8">
+        <div class="card__title">Presentation Timer</div>
+        <div class="timer-display">00:00</div>
+        <div class="timer-controls">
+          <button class="btn green">START</button>
+          <button class="btn amber-filled">PAUSE</button>
+          <button class="btn dim">RESET</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ========== STATE MANAGEMENT ==========
+    const state = {
+      activePersona: 'coo',
+      activeView: 'dashboard'
+    };
+
+    const personaDefaults = {
+      coo: 'dashboard',
+      plant: 'line-status',
+      demo: 'scenarios'
+    };
+
+    // ========== SWITCH PERSONA ==========
+    function switchPersona(key) {
+      state.activePersona = key;
+
+      // Update body theme attribute
+      const themeMap = { coo: 'coo', plant: 'plant', demo: 'demo' };
+      document.body.setAttribute('data-theme', themeMap[key]);
+
+      // Update active chip
+      document.querySelectorAll('.persona-chip').forEach(chip => {
+        chip.classList.remove('active');
+        if (chip.dataset.persona === key) {
+          chip.classList.add('active');
+        }
+      });
+
+      // Switch sub-nav panel with transition
+      document.querySelectorAll('.sub-nav__panel').forEach(panel => {
+        if (panel.dataset.panel === key) {
+          panel.style.display = 'flex';
+          setTimeout(() => {
+            panel.classList.add('active');
+          }, 10);
+        } else {
+          panel.classList.remove('active');
+          setTimeout(() => {
+            panel.style.display = 'none';
+          }, 200);
+        }
+      });
+
+      // Switch to default view for persona
+      const defaultView = personaDefaults[key];
+      switchView(defaultView);
+    }
+
+    // ========== SWITCH VIEW ==========
+    function switchView(viewKey) {
+      state.activeView = viewKey;
+
+      // Update active sub-nav item
+      const activePanel = document.querySelector(`.sub-nav__panel[data-panel="${state.activePersona}"]`);
+      if (activePanel) {
+        activePanel.querySelectorAll('.sub-nav__item').forEach(item => {
+          item.classList.remove('active');
+          if (item.dataset.view === viewKey) {
+            item.classList.add('active');
+          }
+        });
+      }
+
+      // Crossfade views
+      const currentView = document.querySelector('.view.active');
+      const nextView = document.querySelector(`.view[data-view="${viewKey}"]`);
+
+      if (currentView && nextView && currentView !== nextView) {
+        // Fade out current
+        currentView.style.opacity = '0';
+        setTimeout(() => {
+          currentView.classList.remove('active');
+          currentView.style.display = 'none';
+
+          // Fade in next
+          nextView.style.display = 'grid';
+          nextView.style.opacity = '0';
+          setTimeout(() => {
+            nextView.classList.add('active');
+            nextView.style.opacity = '1';
+          }, 10);
+        }, 100);
+      } else if (nextView) {
+        nextView.style.display = 'grid';
+        nextView.classList.add('active');
+        nextView.style.opacity = '1';
+      }
+    }
+
+    // ========== EVENT LISTENERS ==========
+    document.addEventListener('DOMContentLoaded', () => {
+      // Persona chip clicks
+      document.querySelectorAll('.persona-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          switchPersona(chip.dataset.persona);
+        });
+      });
+
+      // Sub-nav item clicks
+      document.querySelectorAll('.sub-nav__item').forEach(item => {
+        item.addEventListener('click', () => {
+          switchView(item.dataset.view);
+        });
+      });
+
+      // Keyboard shortcuts
+      document.addEventListener('keydown', (e) => {
+        // Only if not typing in input
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        const keyMap = { '1': 'coo', '2': 'plant', '3': 'demo' };
+        if (keyMap[e.key]) {
+          switchPersona(keyMap[e.key]);
+        }
+      });
+
+      // Initialize
+      switchPersona('coo');
+    });
+  </script>
+
+</body>
+</html>
