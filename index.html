@@ -451,17 +451,9 @@
                     <div class="inject-form">
                         <div class="inject-field">
                             <label class="inject-label">Equipment</label>
-                            <input type="text"
-                                   id="inject-equipment"
-                                   class="inject-input"
-                                   placeholder="e.g., filler, vat01, caploader, washer"
-                                   list="equipment-suggestions">
-                            <datalist id="equipment-suggestions">
-                                <option value="filler">
-                                <option value="vat01">
-                                <option value="caploader">
-                                <option value="washer">
-                            </datalist>
+                            <select id="inject-equipment" class="inject-input inject-select">
+                                <option value="" disabled selected>Select equipment...</option>
+                            </select>
                         </div>
 
                         <div class="inject-field">

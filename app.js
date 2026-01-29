@@ -2873,6 +2873,9 @@ async function initDemoInject() {
         renderAnomalyTypes();
         setupInjectControls();
 
+        // Populate equipment dropdown from hierarchy
+        await populateEquipmentDropdown();
+
         // Start polling for injection status
         if (demoState.injectionStatusInterval) {
             clearInterval(demoState.injectionStatusInterval);
@@ -2887,6 +2890,76 @@ async function initDemoInject() {
                 Failed to load profiles: ${error.message}
             </div>
         `;
+    }
+}
+
+async function populateEquipmentDropdown() {
+    const selectElement = document.getElementById('inject-equipment');
+    if (!selectElement) return;
+
+    try {
+        // Fetch hierarchy data from backend
+        const response = await fetch('/api/schema/hierarchy');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch hierarchy: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const hierarchy = data.hierarchy;
+
+        if (!hierarchy || Object.keys(hierarchy).length === 0) {
+            selectElement.innerHTML = '<option value="" disabled selected>No equipment data available</option>';
+            return;
+        }
+
+        // Clear existing options except the default one
+        selectElement.innerHTML = '<option value="" disabled selected>Select equipment...</option>';
+
+        // Build equipment list grouped by enterprise
+        const enterprises = Object.keys(hierarchy).sort();
+
+        for (const enterprise of enterprises) {
+            const enterpriseData = hierarchy[enterprise];
+            const optgroup = document.createElement('optgroup');
+            optgroup.label = enterprise;
+
+            // Collect all machines from all sites/areas for this enterprise
+            const machines = [];
+
+            for (const siteName in enterpriseData.sites) {
+                const site = enterpriseData.sites[siteName];
+                for (const areaName in site.areas) {
+                    const area = site.areas[areaName];
+                    for (const machineName in area.machines) {
+                        // Build the full MQTT path
+                        const fullPath = `${enterprise}/${siteName}/${areaName}/${machineName}`;
+                        // Create human-readable label
+                        const label = `${siteName} > ${areaName} > ${machineName}`;
+                        machines.push({ fullPath, label, machineName });
+                    }
+                }
+            }
+
+            // Sort machines alphabetically by label
+            machines.sort((a, b) => a.label.localeCompare(b.label));
+
+            // Add options to optgroup
+            for (const machine of machines) {
+                const option = document.createElement('option');
+                option.value = machine.fullPath;
+                option.textContent = machine.label;
+                optgroup.appendChild(option);
+            }
+
+            // Only add optgroup if it has options
+            if (machines.length > 0) {
+                selectElement.appendChild(optgroup);
+            }
+        }
+
+    } catch (error) {
+        console.error('Failed to populate equipment dropdown:', error);
+        selectElement.innerHTML = '<option value="" disabled selected>Failed to load equipment data</option>';
     }
 }
 
@@ -2941,7 +3014,7 @@ async function startInjection() {
         const durationSlider = document.getElementById('inject-duration');
 
         if (!equipment) {
-            alert('Please enter an equipment name (e.g., filler, vat01, caploader, washer)');
+            alert('Please select an equipment from the dropdown');
             return;
         }
 
