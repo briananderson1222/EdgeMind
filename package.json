@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agent-runtime": "^3.700.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.978.0",
     "@aws-sdk/client-bedrock-runtime": "^3.700.0",
+    "@aws-sdk/client-ssm": "^3.978.0",
     "@influxdata/influxdb-client": "^1.35.0",
     "chromadb": "^3.2.1",
     "dotenv": "^16.3.1",
