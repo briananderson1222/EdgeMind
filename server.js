@@ -1721,11 +1721,11 @@ app.get('/api/batch/status', async (req, res) => {
     equipment.sort((a, b) => a.id.localeCompare(b.id));
 
     // Query cleanroom environmental zones for Enterprise C
-    // Use longer range (1h) as opto22 sensors may publish less frequently
+    // Use 24h range - opto22 environmental sensors publish infrequently
     const cleanroomZones = [];
     const cleanroomQuery = `
       from(bucket: "${CONFIG.influxdb.bucket}")
-        |> range(start: -1h)
+        |> range(start: -24h)
         |> filter(fn: (r) => r._field == "value")
         |> filter(fn: (r) => r.enterprise == "Enterprise C")
         |> filter(fn: (r) => r.site == "opto22")
