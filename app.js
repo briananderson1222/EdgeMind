@@ -62,6 +62,21 @@ const state = {
     }
 };
 
+/**
+ * Filter anomalies by enterprise selection.
+ * When enterprise is selected, includes:
+ * - Anomalies tagged with that enterprise
+ * - Anomalies with no enterprise tag that mention the enterprise in text
+ * When ALL is selected, returns all anomalies.
+ */
+function filterAnomaliesByEnterprise(anomalies, enterprise) {
+    if (enterprise === 'ALL') return anomalies;
+    return anomalies.filter(a =>
+        a.enterprise === enterprise ||
+        (!a.enterprise && a.text && a.text.includes(enterprise))
+    );
+}
+
 // Initialize Charts
 window.oeeBreakdownChart = null;
 window.wasteTrendChart = null;
@@ -420,7 +435,12 @@ async function fetchQualityMetrics(signal) {
         };
 
         let html = '';
-        ['Enterprise A', 'Enterprise B', 'Enterprise C'].forEach(enterprise => {
+        // Filter enterprises based on selected filter
+        const selectedEnterprise = getEnterpriseParam();
+        const enterprises = selectedEnterprise === 'ALL'
+            ? ['Enterprise A', 'Enterprise B', 'Enterprise C']
+            : [selectedEnterprise];
+        enterprises.forEach(enterprise => {
             const summary = data.summary[enterprise];
             if (summary) {
                 const status = getStatus(summary.avg, enterprise);
@@ -840,15 +860,160 @@ function updateEquipmentStateGrid() {
     }).join('');
 }
 
-// Fetch line OEE from API
+// Fetch batch status for Enterprise C
+async function fetchBatchStatus(signal) {
+    try {
+        const response = await fetch('/api/batch/status', { signal });
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status}`);
+        }
+        const data = await response.json();
+        renderBatchOperations(data);
+    } catch (error) {
+        if (error.name === 'AbortError') return;
+        console.error('Error fetching batch status:', error);
+        renderBatchOperationsError();
+    }
+}
+
+// Render batch operations panel
+function renderBatchOperations(data) {
+    const grid = document.getElementById('line-oee-grid');
+    const title = document.getElementById('line-panel-title');
+    if (!grid) return;
+
+    // Update panel title
+    if (title) {
+        title.textContent = 'Batch Operations';
+    }
+
+    if (!data.equipment || data.equipment.length === 0) {
+        grid.innerHTML = '<div class="heatmap-loading">No batch equipment data available</div>';
+        return;
+    }
+
+    // State color mapping
+    const stateColors = {
+        'Running': 'var(--accent-green)',
+        'Idle': 'var(--accent-amber)',
+        'Complete': 'var(--accent-cyan)',
+        'Fault': 'var(--accent-magenta)',
+        'Stopped': 'var(--accent-red)'
+    };
+
+    // Build summary row
+    const summary = data.summary || { running: 0, idle: 0, complete: 0, fault: 0, total: 0 };
+    const summaryHtml = `
+        <div class="batch-summary">
+            <span class="summary-item running">${summary.running} Running</span>
+            <span class="summary-item idle">${summary.idle} Idle</span>
+            <span class="summary-item complete">${summary.complete} Complete</span>
+            <span class="summary-item fault">${summary.fault} Fault</span>
+        </div>
+    `;
+
+    // Build equipment cards
+    const cardsHtml = data.equipment.map(equip => {
+        const state = equip.state || 'Unknown';
+        const stateColor = stateColors[state] || 'var(--text-dim)';
+        const stateClass = state.toLowerCase().replace(/\s+/g, '-');
+
+        return `
+            <div class="batch-card ${stateClass}">
+                <div class="batch-header">
+                    <span class="equipment-name">${escapeHtml(equip.name || equip.id)}</span>
+                    <span class="equipment-state state-${stateClass}" style="color: ${stateColor};">${escapeHtml(state)}</span>
+                </div>
+                <div class="batch-details">
+                    <div class="batch-phase">Phase: ${escapeHtml(equip.phase || 'N/A')}</div>
+                    <div class="batch-id">Batch: ${escapeHtml(equip.batchId || 'N/A')}</div>
+                    <div class="batch-recipe">Recipe: ${escapeHtml(equip.recipe || 'N/A')}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Build cleanroom section if data is available
+    let cleanroomHtml = '';
+    if (data.cleanroom && data.cleanroom.zones && data.cleanroom.zones.length > 0) {
+        const cleanroomSummary = data.cleanroom.summary || {};
+
+        cleanroomHtml = `
+            <div class="cleanroom-section">
+                <div class="cleanroom-header">
+                    <h4>Cleanroom Environmental Zones</h4>
+                    <div class="cleanroom-summary">
+                        ${cleanroomSummary.avgTemp !== null && !isNaN(cleanroomSummary.avgTemp) ? `<span>Avg Temp: ${cleanroomSummary.avgTemp.toFixed(1)}°C</span>` : ''}
+                        ${cleanroomSummary.avgHumidity !== null && !isNaN(cleanroomSummary.avgHumidity) ? `<span>Avg Humidity: ${cleanroomSummary.avgHumidity.toFixed(0)}%</span>` : ''}
+                        ${cleanroomSummary.avgPm25 !== null && !isNaN(cleanroomSummary.avgPm25) ? `<span>Avg PM2.5: ${cleanroomSummary.avgPm25.toFixed(1)} µg/m³</span>` : ''}
+                        <span class="pm25-status ${cleanroomSummary.pm25Status?.toLowerCase() || 'good'}">
+                            PM2.5: ${cleanroomSummary.pm25Status || 'Unknown'}
+                        </span>
+                        ${cleanroomSummary.zonesWithIssues > 0 ? `<span class="zones-issues">Issues: ${cleanroomSummary.zonesWithIssues}/${cleanroomSummary.totalZones}</span>` : ''}
+                    </div>
+                </div>
+                <div class="cleanroom-grid">
+                    ${data.cleanroom.zones.map(zone => {
+                        const statusClass = (zone.status || 'Unknown').toLowerCase();
+                        return `
+                            <div class="cleanroom-card ${statusClass}">
+                                <div class="zone-name">${escapeHtml(zone.name)}</div>
+                                <div class="zone-metrics">
+                                    ${zone.temperature !== null && zone.temperature !== undefined && !isNaN(zone.temperature) ?
+                                        `<span class="metric">${zone.temperature.toFixed(1)}°C</span>` :
+                                        '<span class="metric">--°C</span>'}
+                                    ${zone.humidity !== null && zone.humidity !== undefined && !isNaN(zone.humidity) ?
+                                        `<span class="metric">${zone.humidity.toFixed(0)}%</span>` :
+                                        '<span class="metric">--%</span>'}
+                                    ${zone.pm25 !== null && zone.pm25 !== undefined && !isNaN(zone.pm25) ?
+                                        `<span class="metric pm25">${zone.pm25.toFixed(1)} µg/m³</span>` :
+                                        '<span class="metric pm25">-- µg/m³</span>'}
+                                </div>
+                                <div class="zone-status ${statusClass}">${escapeHtml(zone.status || 'Unknown')}</div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Use flex layout: summary on top, equipment grid, then cleanroom section below
+    grid.innerHTML = `
+        ${summaryHtml}
+        <div class="batch-equipment-grid">${cardsHtml}</div>
+        ${cleanroomHtml}
+    `;
+}
+
+// Render batch operations error state
+function renderBatchOperationsError() {
+    const grid = document.getElementById('line-oee-grid');
+    const title = document.getElementById('line-panel-title');
+    if (!grid) return;
+
+    if (title) {
+        title.textContent = 'Batch Operations';
+    }
+
+    grid.innerHTML = '<div class="heatmap-loading">Failed to load batch operations</div>';
+}
+
+// Fetch line OEE from API (or batch status for Enterprise C)
 async function fetchLineOEE(signal) {
+    // Check if we should show batch operations instead
+    const enterprise = getEnterpriseParam();
+    if (enterprise === 'Enterprise C') {
+        await fetchBatchStatus(signal);
+        return;
+    }
+
     try {
         const response = await fetch('/api/oee/lines', { signal });
         const data = await response.json();
 
         if (data.lines && Array.isArray(data.lines)) {
             // Filter by global selectedFactory
-            const enterprise = getEnterpriseParam();
             let filteredLines = data.lines;
             if (enterprise !== 'ALL') {
                 filteredLines = data.lines.filter(line => line.enterprise === enterprise);
@@ -873,7 +1038,13 @@ async function fetchLineOEE(signal) {
 // Render line OEE grid
 function renderLineOEEGrid(lines) {
     const grid = document.getElementById('line-oee-grid');
+    const title = document.getElementById('line-panel-title');
     if (!grid) return;
+
+    // Update panel title
+    if (title) {
+        title.textContent = 'Production Line OEE';
+    }
 
     if (lines.length === 0) {
         grid.innerHTML = '<div class="heatmap-loading">No lines available for selected enterprise</div>';
@@ -1184,23 +1355,7 @@ function updateMetrics() {
     const anomalyCount = document.getElementById('anomaly-count');
     if (anomalyCount) {
         const enterprise = getEnterpriseParam();
-        let filteredAnomalies = state.anomalies;
-
-        if (enterprise !== 'ALL') {
-            // Filter anomalies by enterprise
-            filteredAnomalies = state.anomalies.filter(anomaly => {
-                // Check if anomaly has enterprise field (new format)
-                if (anomaly.enterprise) {
-                    return anomaly.enterprise === enterprise;
-                }
-                // Fallback: check if anomaly text contains enterprise name
-                if (anomaly.text && anomaly.text.includes(enterprise)) {
-                    return true;
-                }
-                return false;
-            });
-        }
-
+        const filteredAnomalies = filterAnomaliesByEnterprise(state.anomalies, enterprise);
         anomalyCount.textContent = filteredAnomalies.length;
     }
 }
@@ -1306,6 +1461,10 @@ function selectFactory(factory) {
     });
 
     updateMetrics();
+
+    // Re-filter insights panel with new enterprise selection
+    filterInsights(state.insightFilter);
+
     console.log('Filtering by factory:', factory);
 }
 
@@ -1623,34 +1782,38 @@ function applyInsightFilter(filterType, containerEl, tabSelector, onAnomalyClick
     // Clear content
     containerEl.innerHTML = '';
 
+    // Get enterprise filter
+    const selectedEnterprise = getEnterpriseParam();
+
     if (filterType === 'anomalies') {
-        // Show only anomalies
-        if (state.anomalies.length === 0) {
+        // Filter anomalies by enterprise using shared helper
+        const filteredAnomalies = filterAnomaliesByEnterprise(state.anomalies, selectedEnterprise);
+
+        if (filteredAnomalies.length === 0) {
+            const enterpriseText = selectedEnterprise !== 'ALL'
+                ? ` for ${escapeHtml(selectedEnterprise)}`
+                : '';
             containerEl.innerHTML = `
                 <div class="agent-insights">
-                    <div class="insight-text">No anomalies detected yet.</div>
+                    <div class="insight-text">No anomalies detected${enterpriseText}.</div>
                     <div class="insight-meta">Claude analyzes trends every 30 seconds</div>
                 </div>
             `;
         } else {
-            state.anomalies.forEach(anomaly => {
+            filteredAnomalies.forEach(anomaly => {
                 const el = document.createElement('div');
                 el.className = 'anomaly-item';
-
-                // Escape user-controlled content to prevent XSS
                 const escapedText = escapeHtml(anomaly.text);
-
                 el.innerHTML = `
                     <div>${escapedText}</div>
                     <div class="anomaly-time">${anomaly.timestamp ? new Date(anomaly.timestamp).toLocaleTimeString() : ''}</div>
                 `;
-                // Add click handler
                 el.addEventListener('click', () => onAnomalyClick(anomaly));
                 containerEl.appendChild(el);
             });
         }
     } else {
-        // Show all insights
+        // Show insights - filter by enterprise if selected
         if (state.insights.length === 0) {
             containerEl.innerHTML = `
                 <div class="agent-insights">
@@ -1658,11 +1821,57 @@ function applyInsightFilter(filterType, containerEl, tabSelector, onAnomalyClick
                     <div class="insight-meta">Status: Standby</div>
                 </div>
             `;
-        } else {
-            state.insights.forEach(insight => {
+            return;
+        }
+
+        let hasVisibleInsights = false;
+
+        state.insights.forEach(insight => {
+            if (selectedEnterprise !== 'ALL') {
+                // Enterprise filter active - show enterprise-specific content
+                if (insight.enterpriseInsights && insight.enterpriseInsights[selectedEnterprise]) {
+                    // Has enterprise-specific insight text
+                    const filteredInsight = {
+                        ...insight,
+                        summary: insight.enterpriseInsights[selectedEnterprise],
+                        insight: insight.enterpriseInsights[selectedEnterprise],
+                        // Also filter anomalies within this insight
+                        anomalies: filterAnomaliesByEnterprise(insight.anomalies || [], selectedEnterprise)
+                    };
+                    const insightEl = createInsightElement(filteredInsight);
+                    containerEl.appendChild(insightEl);
+                    hasVisibleInsights = true;
+                } else if (!insight.enterpriseInsights) {
+                    // No enterpriseInsights at all - show full insight (legacy/global)
+                    // But filter the anomalies within it
+                    const filteredInsight = {
+                        ...insight,
+                        anomalies: filterAnomaliesByEnterprise(insight.anomalies || [], selectedEnterprise)
+                    };
+                    const insightEl = createInsightElement(filteredInsight);
+                    containerEl.appendChild(insightEl);
+                    hasVisibleInsights = true;
+                }
+                // If enterpriseInsights exists but doesn't have selected enterprise, skip this insight
+            } else {
+                // ALL selected - show full insight
                 const insightEl = createInsightElement(insight);
                 containerEl.appendChild(insightEl);
-            });
+                hasVisibleInsights = true;
+            }
+        });
+
+        // Show empty state if no insights matched filter
+        if (!hasVisibleInsights) {
+            const enterpriseText = selectedEnterprise !== 'ALL'
+                ? ` for ${escapeHtml(selectedEnterprise)}`
+                : '';
+            containerEl.innerHTML = `
+                <div class="agent-insights">
+                    <div class="insight-text">No insights available${enterpriseText}.</div>
+                    <div class="insight-meta">Claude analyzes trends every 30 seconds</div>
+                </div>
+            `;
         }
     }
 }
@@ -1676,6 +1885,14 @@ function filterInsights(filterType, clickedTab) {
     if (!container) return;
 
     applyInsightFilter(filterType, container, '.insight-tabs .insight-tab', openAnomalyModal);
+
+    // Update anomaly tab counter to reflect filtered count
+    const tabCount = document.getElementById('anomaly-tab-count');
+    if (tabCount) {
+        const enterprise = getEnterpriseParam();
+        const filteredCount = filterAnomaliesByEnterprise(state.anomalies, enterprise).length;
+        tabCount.textContent = filteredCount;
+    }
 }
 
 // Add anomaly filter

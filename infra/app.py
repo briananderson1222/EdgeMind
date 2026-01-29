@@ -93,6 +93,7 @@ backend_stack = BackendStack(
     alb_security_group=network_stack.alb_security_group,
     mqtt_secret=secrets_stack.mqtt_secret,
     influxdb_secret=secrets_stack.influxdb_secret,
+    maintainx_secret=secrets_stack.maintainx_secret,
     project_name=PROJECT_NAME,
     environment=ENVIRONMENT,
     env=env,

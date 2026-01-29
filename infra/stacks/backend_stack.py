@@ -34,6 +34,7 @@ class BackendStack(Stack):
         alb_security_group: ec2.ISecurityGroup,
         mqtt_secret: secretsmanager.ISecret,
         influxdb_secret: secretsmanager.ISecret,
+        maintainx_secret: secretsmanager.ISecret,
         project_name: str = "edgemind",
         environment: str = "prod",
         **kwargs
@@ -148,6 +149,7 @@ class BackendStack(Stack):
         # Grant Secrets Manager read permissions
         mqtt_secret.grant_read(task_definition.task_role)
         influxdb_secret.grant_read(task_definition.task_role)
+        maintainx_secret.grant_read(task_definition.task_role)
 
         # CloudWatch Logs
         # SECURITY: Retention extended to 30 days for security incident investigation
@@ -179,6 +181,9 @@ class BackendStack(Stack):
                 # AgentCore (Bedrock Agents) configuration
                 "AGENTCORE_AGENT_ID": "TNVA1PNEZT",
                 "AGENTCORE_ALIAS_ID": "R1EEGTBSIT",
+                "CMMS_ENABLED": "true",
+                "CMMS_PROVIDER": "maintainx",
+                "MAINTAINX_BASE_URL": "https://api.getmaintainx.com/v1",
             },
             secrets={
                 # MQTT credentials from Secrets Manager
@@ -190,6 +195,8 @@ class BackendStack(Stack):
                 "INFLUXDB_TOKEN": ecs.Secret.from_secrets_manager(influxdb_secret, "token"),
                 "INFLUXDB_ORG": ecs.Secret.from_secrets_manager(influxdb_secret, "org"),
                 "INFLUXDB_BUCKET": ecs.Secret.from_secrets_manager(influxdb_secret, "bucket"),
+                "MAINTAINX_API_KEY": ecs.Secret.from_secrets_manager(maintainx_secret, "api_key"
+        ),
                 # Note: AI uses AWS Bedrock via IAM role - no API key needed
             },
             health_check=ecs.HealthCheck(

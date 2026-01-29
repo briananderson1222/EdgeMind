@@ -40,6 +40,7 @@ const {
   queryOEEBreakdown,
   queryFactoryStatus
 } = require('./lib/oee');
+const { getEquipmentMetadata, EQUIPMENT_ALIASES, resolveEquipmentId } = require('./lib/equipment');
 
 // Initialize services
 const app = express();
@@ -249,21 +250,52 @@ mqttClient.on('message', async (topic, message) => {
     if (parts.length >= 3) {
       const enterprise = parts[0];
       const site = parts[1];
-      // Machine could be at different positions depending on structure
-      const machine = parts.length >= 4 ? parts[3] : parts[2];
+
+      // Extract machine name - try multiple strategies
+      let machine = parts.length >= 4 ? parts[3] : parts[2];
+
+      // For Enterprise C ISA-88 equipment, extract equipment ID from measurement name
+      // Measurement names like CHR01_STATE, SUB250_STATE contain the equipment ID
+      const measurementName = parts[parts.length - 1];
+      const equipmentNormalization = {
+        'UNIT_250': 'SUB250',
+        'UNIT_500': 'SUM500'
+      };
+      const equipmentPatterns = ['CHR01', 'SUB250', 'SUM500', 'TFF300', 'UNIT_250', 'UNIT_500'];
+      for (const pattern of equipmentPatterns) {
+        if (measurementName.includes(pattern)) {
+          machine = equipmentNormalization[pattern] || pattern;
+          break;
+        }
+      }
+
       const equipmentKey = `${enterprise}/${site}/${machine}`;
 
       // Parse state value - support both numeric (1=DOWN, 2=IDLE, 3=RUNNING) and string values
       let stateValue = null;
       let stateInfo = null;
 
-      const numValue = parseInt(payload);
+      // Extract actual value from JSON payloads (Enterprise C sends {"value":"Idle"} format)
+      let actualPayload = payload;
+      if (typeof payload === 'string' && payload.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(payload);
+          if (parsed && typeof parsed === 'object' && 'value' in parsed) {
+            // Handle <nil> as null (skip state detection for nil values)
+            actualPayload = parsed.value === '<nil>' ? null : parsed.value;
+          }
+        } catch {
+          // Not valid JSON, use raw payload
+        }
+      }
+
+      const numValue = parseInt(actualPayload);
       if (!isNaN(numValue) && equipmentStateCache.STATE_CODES[numValue]) {
         stateValue = numValue;
         stateInfo = equipmentStateCache.STATE_CODES[numValue];
       } else {
         // Check for string state values
-        const payloadLower = String(payload).toLowerCase();
+        const payloadLower = String(actualPayload).toLowerCase();
         if (payloadLower.includes('down') || payloadLower.includes('stop') || payloadLower.includes('fault') || payloadLower === '1') {
           stateValue = 1;
           stateInfo = equipmentStateCache.STATE_CODES[1];
@@ -706,12 +738,23 @@ app.get('/api/schema/hierarchy', async (req, res) => {
 // NEW: Equipment states endpoint - returns current equipment states
 app.get('/api/equipment/states', async (req, res) => {
   try {
+    // SECURITY: Validate enterprise parameter
+    const enterprise = validateEnterprise(req.query.enterprise);
+    if (enterprise === null) {
+      return res.status(400).json({ error: 'Invalid enterprise parameter' });
+    }
+
     const now = Date.now();
     const states = [];
     const summary = { running: 0, idle: 0, down: 0, unknown: 0 };
 
     // Convert Map to array with calculated durations
     for (const [key, stateData] of equipmentStateCache.states.entries()) {
+      // Filter by enterprise if specified
+      if (enterprise && enterprise !== 'ALL' && stateData.enterprise !== enterprise) {
+        continue;
+      }
+
       const durationMs = now - new Date(stateData.firstSeen).getTime();
 
       states.push({
@@ -863,6 +906,17 @@ app.get('/api/oee/lines', async (req, res) => {
 // NEW: Waste/Defect tracking endpoint
 app.get('/api/waste/trends', async (req, res) => {
   try {
+    // SECURITY: Validate enterprise parameter
+    const enterprise = validateEnterprise(req.query.enterprise);
+    if (enterprise === null) {
+      return res.status(400).json({ error: 'Invalid enterprise parameter' });
+    }
+
+    // Build enterprise filter for Flux query
+    const enterpriseFilter = (enterprise && enterprise !== 'ALL')
+      ? `|> filter(fn: (r) => r.enterprise == "${sanitizeInfluxIdentifier(enterprise)}")`
+      : '';
+
     const fluxQuery = `
       from(bucket: "factory")
         |> range(start: -24h)
@@ -880,6 +934,7 @@ app.get('/api/waste/trends', async (req, res) => {
           r._measurement == "edge_reject_gate_status"
         )
         |> filter(fn: (r) => r._value >= 0)
+        ${enterpriseFilter}
         |> group(columns: ["enterprise", "area", "_measurement"])
         |> aggregateWindow(every: 1h, fn: sum, createEmpty: false)
     `;
@@ -983,6 +1038,17 @@ app.get('/api/waste/trends', async (req, res) => {
 // NEW: Waste by production line endpoint
 app.get('/api/waste/by-line', async (req, res) => {
   try {
+    // SECURITY: Validate enterprise parameter
+    const enterprise = validateEnterprise(req.query.enterprise);
+    if (enterprise === null) {
+      return res.status(400).json({ error: 'Invalid enterprise parameter' });
+    }
+
+    // Build enterprise filter for Flux query
+    const enterpriseFilter = (enterprise && enterprise !== 'ALL')
+      ? `|> filter(fn: (r) => r.enterprise == "${sanitizeInfluxIdentifier(enterprise)}")`
+      : '';
+
     const fluxQuery = `
       from(bucket: "factory")
         |> range(start: -24h)
@@ -1000,6 +1066,7 @@ app.get('/api/waste/by-line', async (req, res) => {
           r._measurement == "edge_reject_gate_status"
         )
         |> filter(fn: (r) => r._value >= 0)
+        ${enterpriseFilter}
         |> group(columns: ["enterprise", "site", "area", "_measurement"])
         |> sum()
     `;
@@ -1520,23 +1587,329 @@ app.get('/api/waste/breakdown', async (req, res) => {
 });
 
 /**
- * GET /api/batch/health - Batch process health for Enterprise C (stub)
- * Returns mock data until ISA-88 batch tracking is implemented
+ * Parse JSON-encoded MQTT values to extract the actual value field
+ * @param {string|number} rawValue - Raw value from InfluxDB
+ * @returns {string|number|null} Parsed value
  */
-app.get('/api/batch/health', async (req, res) => {
+function parseJsonValue(rawValue) {
+  if (typeof rawValue !== 'string') return rawValue;
+
+  // Try to parse as JSON and extract value field
   try {
-    // TODO: Implement ISA-88 batch tracking for Enterprise C
-    // For now, return placeholder data
+    const parsed = JSON.parse(rawValue);
+    if (parsed && typeof parsed === 'object' && 'value' in parsed) {
+      // Handle <nil> as null
+      if (parsed.value === '<nil>') return null;
+      return parsed.value;
+    }
+    return rawValue;
+  } catch {
+    return rawValue;
+  }
+}
+
+/**
+ * GET /api/batch/status - ISA-88 batch process status for Enterprise C
+ * Returns current status of batch equipment (CHR01, SUB250, SUM500, TFF300)
+ */
+app.get('/api/batch/status', async (req, res) => {
+  try {
+    // Dynamically discover equipment from hierarchy cache
+    const equipmentMetadata = await getEquipmentMetadata('Enterprise C');
+    const knownEquipment = Object.keys(equipmentMetadata);
+
+    // Query InfluxDB for latest batch equipment states
+    const fluxQuery = `
+      from(bucket: "${CONFIG.influxdb.bucket}")
+        |> range(start: -15m)
+        |> filter(fn: (r) => r._field == "value")
+        |> filter(fn: (r) => r.enterprise == "Enterprise C")
+        |> filter(fn: (r) =>
+          r._measurement =~ /STATE/ or
+          r._measurement =~ /PHASE/ or
+          r._measurement =~ /BATCH_ID/ or
+          r._measurement =~ /RECIPE/ or
+          r._measurement =~ /STATUS/ or
+          r._measurement =~ /FORMULA/
+        )
+        |> last()
+    `;
+
+    // Collect measurement data by equipment
+    const equipmentData = new Map();
+
+    await new Promise((resolve) => {
+      queryApi.queryRows(fluxQuery, {
+        next(row, tableMeta) {
+          const o = tableMeta.toObject(row);
+          if (!o._measurement || !o._value) return;
+
+          // Resolve equipment ID from measurement name using aliases
+          const equipmentId = resolveEquipmentId(o._measurement, knownEquipment);
+          if (!equipmentId || !equipmentMetadata[equipmentId]) return;
+
+          // Initialize equipment entry if needed
+          if (!equipmentData.has(equipmentId)) {
+            equipmentData.set(equipmentId, {
+              id: equipmentId,
+              site: o.site || 'Unknown',
+              measurements: {},
+              lastUpdate: o._time
+            });
+          }
+
+          const equipment = equipmentData.get(equipmentId);
+
+          // Categorize measurement by type
+          const measurement = o._measurement.toLowerCase();
+          const parsedValue = parseJsonValue(o._value);
+
+          if (measurement.includes('state') || measurement.includes('status')) {
+            equipment.measurements.state = parsedValue;
+            equipment.lastUpdate = o._time;
+          } else if (measurement.includes('phase')) {
+            equipment.measurements.phase = parsedValue;
+          } else if (measurement.includes('batch_id')) {
+            equipment.measurements.batchId = parsedValue;
+          } else if (measurement.includes('recipe') || measurement.includes('formula')) {
+            equipment.measurements.recipe = parsedValue;
+          }
+        },
+        error(error) {
+          console.error('Batch status query error:', error);
+          resolve();
+        },
+        complete() {
+          resolve();
+        }
+      });
+    });
+
+    // Build response with equipment status
+    const equipment = [];
+    const summary = { running: 0, idle: 0, complete: 0, fault: 0, total: 0 };
+
+    for (const [id, data] of equipmentData.entries()) {
+      const metadata = equipmentMetadata[id];
+      // Use state if available, fall back to phase (TFF300 has no STATE, only PHASE)
+      const state = data.measurements.state || data.measurements.phase || 'Unknown';
+
+      // Normalize state for summary
+      const stateLower = state.toString().toLowerCase();
+      let summaryKey = 'idle';
+      if (stateLower.includes('run')) summaryKey = 'running';
+      else if (stateLower.includes('complete') || stateLower.includes('done')) summaryKey = 'complete';
+      else if (stateLower.includes('fault') || stateLower.includes('error') || stateLower.includes('alarm')) summaryKey = 'fault';
+
+      summary[summaryKey]++;
+      summary.total++;
+
+      equipment.push({
+        id,
+        name: metadata.name,
+        type: metadata.type,
+        site: data.site,
+        state,
+        phase: data.measurements.phase || null,
+        batchId: data.measurements.batchId || null,
+        recipe: data.measurements.recipe || null,
+        lastUpdate: data.lastUpdate
+      });
+    }
+
+    // Sort by equipment ID for consistency
+    equipment.sort((a, b) => a.id.localeCompare(b.id));
+
+    // Query cleanroom environmental zones for Enterprise C
+    // Use 1h range, exclude _props metadata measurements
+    const cleanroomZones = [];
+    const cleanroomQuery = `
+      from(bucket: "${CONFIG.influxdb.bucket}")
+        |> range(start: -1h)
+        |> filter(fn: (r) => r._field == "value")
+        |> filter(fn: (r) => r.enterprise == "Enterprise C")
+        |> filter(fn: (r) => r.site == "opto22")
+        |> filter(fn: (r) => r.area == "Environmental Zones")
+        |> filter(fn: (r) => r._measurement =~ /FC\\d+_/)
+        |> filter(fn: (r) => r._measurement !~ /_props$/)
+        |> last()
+    `;
+
+    // Collect cleanroom data by zone (machine)
+    const cleanroomData = new Map();
+
+    await new Promise((resolve) => {
+      queryApi.queryRows(cleanroomQuery, {
+        next(row, tableMeta) {
+          const o = tableMeta.toObject(row);
+          if (!o._measurement || !o._value || !o.machine) return;
+
+          // Initialize zone entry if needed
+          if (!cleanroomData.has(o.machine)) {
+            cleanroomData.set(o.machine, {
+              name: o.machine,
+              metrics: {},
+              lastUpdate: o._time
+            });
+          }
+
+          const zone = cleanroomData.get(o.machine);
+          const parsedValue = parseJsonValue(o._value);
+          const measurement = o._measurement.toLowerCase();
+
+          // Extract FC## prefix and metric type
+          // Measurements follow pattern: FC##_Metric_Name or FC##_Air_Quality__PM2_5_
+          const fcMatch = o._measurement.match(/FC(\d+)_(.*)/i);
+          if (!fcMatch) return;
+
+          const [, fcNumber, metricType] = fcMatch;
+          const metricLower = metricType.toLowerCase();
+
+          // Categorize metrics (with null guards to prevent NaN)
+          if (metricLower.includes('fan') && metricLower.includes('status')) {
+            zone.metrics.fanStatus = parsedValue;
+          } else if (metricLower.includes('ambient') && metricLower.includes('temperature')) {
+            zone.metrics.temperature = typeof parsedValue === 'number' ? parsedValue : (parsedValue != null ? parseFloat(parsedValue) : null);
+          } else if (metricLower.includes('temperature') && !metricLower.includes('ambient')) {
+            // Generic temperature fallback
+            if (!zone.metrics.temperature) {
+              zone.metrics.temperature = typeof parsedValue === 'number' ? parsedValue : (parsedValue != null ? parseFloat(parsedValue) : null);
+            }
+          } else if (metricLower.includes('humid')) {
+            zone.metrics.humidity = typeof parsedValue === 'number' ? parsedValue : (parsedValue != null ? parseFloat(parsedValue) : null);
+          } else if (metricLower.includes('pm2') || metricLower.includes('pm_2') || metricLower.includes('air_quality')) {
+            zone.metrics.pm25 = typeof parsedValue === 'number' ? parsedValue : (parsedValue != null ? parseFloat(parsedValue) : null);
+          }
+
+          zone.lastUpdate = o._time;
+        },
+        error(error) {
+          console.error('Cleanroom query error:', error);
+          resolve();
+        },
+        complete() {
+          resolve();
+        }
+      });
+    });
+
+    // Get cleanroom thresholds from domain context (getEnterpriseContext already imported at top)
+    const enterpriseContext = getEnterpriseContext('Enterprise C');
+    const thresholds = enterpriseContext?.cleanroomThresholds || {
+      'PM2.5': { warning: 5, critical: 10 },
+      'temperature': { min: 18, max: 25 },
+      'humidity': { min: 40, max: 60 }
+    };
+
+    // Process cleanroom zones and calculate status
+    let totalTemp = 0;
+    let totalHumidity = 0;
+    let totalPm25 = 0;
+    let tempCount = 0;
+    let humidityCount = 0;
+    let pm25Count = 0;
+    let zonesWithIssues = 0;
+
+    for (const [machineName, data] of cleanroomData.entries()) {
+      let { temperature, humidity, pm25, fanStatus } = data.metrics;
+
+      // Convert Fahrenheit to Celsius if temperature appears to be in °F (above 50)
+      // Cleanroom temp should be 18-25°C (64-77°F)
+      if (typeof temperature === 'number' && !isNaN(temperature) && temperature > 50) {
+        temperature = (temperature - 32) * 5 / 9;
+      }
+
+      // Determine zone status based on thresholds
+      let status = 'Good';
+      const issues = [];
+
+      if (typeof temperature === 'number' && !isNaN(temperature)) {
+        totalTemp += temperature;
+        tempCount++;
+        if (temperature < thresholds.temperature.min || temperature > thresholds.temperature.max) {
+          issues.push('temperature');
+          status = 'Critical';
+        } else if (Math.abs(temperature - thresholds.temperature.min) < 1 ||
+                   Math.abs(temperature - thresholds.temperature.max) < 1) {
+          if (status === 'Good') status = 'Warning';
+        }
+      }
+
+      if (typeof humidity === 'number' && !isNaN(humidity)) {
+        totalHumidity += humidity;
+        humidityCount++;
+        if (humidity < thresholds.humidity.min || humidity > thresholds.humidity.max) {
+          issues.push('humidity');
+          status = 'Critical';
+        } else if (Math.abs(humidity - thresholds.humidity.min) < 3 ||
+                   Math.abs(humidity - thresholds.humidity.max) < 3) {
+          if (status === 'Good') status = 'Warning';
+        }
+      }
+
+      if (typeof pm25 === 'number' && !isNaN(pm25)) {
+        totalPm25 += pm25;
+        pm25Count++;
+        if (pm25 >= thresholds['PM2.5'].critical) {
+          issues.push('PM2.5');
+          status = 'Critical';
+        } else if (pm25 >= thresholds['PM2.5'].warning) {
+          if (status === 'Good') status = 'Warning';
+        }
+      }
+
+      if (status !== 'Good') {
+        zonesWithIssues++;
+      }
+
+      cleanroomZones.push({
+        name: machineName,
+        fanStatus: fanStatus || 'Unknown',
+        temperature: temperature,
+        humidity: humidity,
+        pm25: pm25,
+        status,
+        issues,
+        lastUpdate: data.lastUpdate
+      });
+    }
+
+    // Sort zones by name
+    cleanroomZones.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Calculate averages
+    const avgTemp = tempCount > 0 ? totalTemp / tempCount : null;
+    const avgHumidity = humidityCount > 0 ? totalHumidity / humidityCount : null;
+    const avgPm25 = pm25Count > 0 ? totalPm25 / pm25Count : null;
+
+    // Determine overall PM2.5 status
+    let pm25Status = 'Good';
+    if (avgPm25 !== null) {
+      if (avgPm25 >= thresholds['PM2.5'].critical) pm25Status = 'Critical';
+      else if (avgPm25 >= thresholds['PM2.5'].warning) pm25Status = 'Warning';
+    }
+
     res.json({
-      enterprise: 'Enterprise C',
-      batches: [],
-      message: 'Enterprise C uses ISA-88 batch control (not yet fully implemented)',
+      equipment,
+      summary,
+      cleanroom: {
+        zones: cleanroomZones,
+        summary: {
+          avgTemp,
+          avgHumidity,
+          avgPm25,
+          pm25Status,
+          zonesWithIssues,
+          totalZones: cleanroomZones.length
+        }
+      },
       timestamp: new Date().toISOString()
     });
+
   } catch (error) {
-    console.error('Batch health endpoint error:', error);
+    console.error('Batch status endpoint error:', error);
     res.status(500).json({
-      error: 'Failed to query batch health',
+      error: 'Failed to query batch status',
       message: error.message
     });
   }

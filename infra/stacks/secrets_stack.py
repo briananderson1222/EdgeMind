@@ -77,6 +77,11 @@ class SecretsStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
+        # MaintainX API key secret
+        self.maintainx_secret = secretsmanager.Secret.from_secret_name_v2(
+           self, "MaintainXSecret", "edgemind/cmms/maintainx"
+        )
+
         # Outputs
         CfnOutput(
             self, "MQTTSecretArn",

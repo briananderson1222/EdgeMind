@@ -357,6 +357,120 @@ if (cmmsProviderInstance && cmmsProviderInstance.isEnabled() &&
 }
 ```
 
+## Complete Integration Flow
+
+### Startup Sequence
+
+```text
+server.js startup
+    │
+    ├─► createCmmsProvider('maintainx', config)
+    │       └─► MaintainXProvider instance created
+    │
+    ├─► initializeAIModule({ cmms: cmmsProvider, ... })
+    │       └─► cmmsProviderInstance stored in AI module
+    │
+    └─► startAgenticLoop()
+            └─► runTrendAnalysis() scheduled every 30 seconds
+```
+
+**Relevant code:** [server.js:49-56](../server.js#L49-L56)
+
+### Runtime Flow
+
+```text
+runTrendAnalysis() [every 30 seconds]
+    │
+    ├─► queryTrends()
+    │       └─► InfluxDB: 5-minute rolling window, 1-min aggregates
+    │
+    ├─► analyzeTreesWithClaude(trends)
+    │       └─► Claude returns insight with severity rating
+    │
+    └─► IF all trigger conditions met:
+            │
+            ├─► processAnomaliesForWorkOrders(insight, trends)
+            │       │
+            │       ├─► extractAffectedEquipment(trends, insight)
+            │       │
+            │       └─► For each affected equipment:
+            │               │
+            │               ├─► cmmsProviderInstance.createWorkOrder(insight, equipment)
+            │               │       └─► POST to MaintainX API
+            │               │
+            │               └─► broadcast('cmms_work_order_created', ...)
+            │
+            └─► Log: "Created X/Y work orders successfully"
+```
+
+**Relevant code:** [lib/ai/index.js:712-769](../lib/ai/index.js#L712-L769)
+
+### Trigger Conditions
+
+Work orders are created only when **ALL** conditions are true:
+
+| Condition | Check | Location |
+|-----------|-------|----------|
+| Provider exists | `cmmsProviderInstance` is not null | AI module initialization |
+| Provider enabled | `cmmsProviderInstance.isEnabled()` returns `true` | `CMMS_ENABLED=true` env var |
+| High severity | `insight.severity === 'high'` | Claude's assessment |
+| Anomalies present | `insight.anomalies?.length > 0` | Claude detected issues |
+
+**Note:** Low and medium severity anomalies do NOT create work orders automatically.
+
+### Work Order API Payload
+
+The exact payload sent to MaintainX API (`POST /workorders`):
+
+```javascript
+{
+  // Title: truncated to 200 chars
+  title: "Enterprise A - Dallas Line 1 - Palletizer01: Temperature spike detected",
+
+  // Structured markdown description (see format below)
+  description: "AI-Detected Anomaly - HIGH severity\n\n## Summary\n...",
+
+  // Mapped from severity: high→URGENT, medium→MEDIUM, low→LOW
+  priority: "URGENT",
+
+  // Initial status
+  status: "OPEN",
+
+  // Optional - only included if configured
+  locationId: "loc-123",    // From MAINTAINX_DEFAULT_LOCATION_ID
+  assigneeId: "user-456",   // From MAINTAINX_DEFAULT_ASSIGNEE_ID
+
+  // Custom fields for filtering and tracking in MaintainX
+  customFields: {
+    source: "EdgeMind-AI",
+    enterprise: "Enterprise A",
+    site: "Dallas Line 1",
+    machine: "Palletizer01",
+    area: "packaging",
+    severity: "high",
+    confidence: 0.87,
+    detectedAt: "2026-01-28T10:30:00.000Z"
+  }
+}
+```
+
+### Data Sources
+
+| Work Order Field | Source |
+|------------------|--------|
+| `title` | Equipment context + `anomaly.summary` |
+| `description` | Built from all anomaly and equipment fields |
+| `priority` | Mapped from `anomaly.severity` |
+| `customFields.enterprise` | Extracted from InfluxDB trend tags |
+| `customFields.site` | Extracted from InfluxDB trend tags |
+| `customFields.machine` | Extracted from InfluxDB trend tags |
+| `customFields.confidence` | `anomaly.confidence` from Claude |
+| `customFields.detectedAt` | `anomaly.timestamp` |
+
+### Deduplication
+
+The `extractAffectedEquipment()` function deduplicates by equipment to avoid creating multiple work orders for the same machine in a single analysis cycle.
+
 ## Adding New Providers
 
 To add a new CMMS provider:
