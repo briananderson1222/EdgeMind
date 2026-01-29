@@ -32,9 +32,9 @@ class FrontendStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         # S3 bucket for frontend static files
+        # Note: bucket_name omitted to auto-generate unique name (avoids global conflicts)
         self.frontend_bucket = s3.Bucket(
             self, "FrontendBucket",
-            bucket_name=f"{project_name}-{environment}-frontend",
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
@@ -119,9 +119,9 @@ class FrontendStack(Stack):
         )
 
         # CloudFront logs bucket (must be created before distribution)
+        # Note: bucket_name omitted to auto-generate unique name (avoids global conflicts)
         log_bucket = s3.Bucket(
             self, "CloudFrontLogBucket",
-            bucket_name=f"{project_name}-{environment}-cloudfront-logs",
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
@@ -142,6 +142,7 @@ class FrontendStack(Stack):
         )
 
         # ALB Origin for backend API and WebSocket
+        # Custom header for origin verification - ALB rejects requests without it
         alb_origin = origins.LoadBalancerV2Origin(
             alb,
             protocol_policy=cloudfront.OriginProtocolPolicy.HTTP_ONLY,
@@ -149,6 +150,9 @@ class FrontendStack(Stack):
             connection_attempts=3,
             connection_timeout=Duration.seconds(10),
             read_timeout=Duration.seconds(60),  # Increased for WebSocket
+            custom_headers={
+                "X-Origin-Verify": "edgemind-cloudfront-origin-2026"
+            }
         )
 
         # CloudFront Distribution
@@ -190,6 +194,19 @@ class FrontendStack(Stack):
                     origin_request_policy=api_origin_request_policy,
                     allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
                     compress=False,
+                ),
+                # OpenAPI spec endpoint for AgentCore Gateway
+                "/api-spec/*": cloudfront.BehaviorOptions(
+                    origin=alb_origin,
+                    viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                    cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
+                    allowed_methods=cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+                ),
+                "/api-docs/*": cloudfront.BehaviorOptions(
+                    origin=alb_origin,
+                    viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                    cache_policy=cloudfront.CachePolicy.CACHING_DISABLED,
+                    allowed_methods=cloudfront.AllowedMethods.ALLOW_GET_HEAD,
                 ),
                 # Health check endpoint
                 "/health": cloudfront.BehaviorOptions(

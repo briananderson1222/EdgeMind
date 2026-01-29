@@ -16,7 +16,7 @@ class NetworkStack(Stack):
         construct_id: str,
         project_name: str = "edgemind",
         environment: str = "prod",
-        vpc_id: str = "vpc-0352743a1bf5ef86f",  # Default VPC
+        vpc_id: str = "vpc-0448b67e033aa661c",  # Default VPC
         **kwargs
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -28,7 +28,7 @@ class NetworkStack(Stack):
             vpc_id=vpc_id
         )
 
-        # Security Group for ALB (public-facing)
+        # Security Group for ALB (CloudFront-facing only)
         self.alb_security_group = ec2.SecurityGroup(
             self, "ALBSecurityGroup",
             vpc=self.vpc,
@@ -37,16 +37,14 @@ class NetworkStack(Stack):
             allow_all_outbound=True,
         )
 
-        # Allow HTTP and HTTPS from internet
+        # CloudFront managed prefix list - restricts ALB to CloudFront IPs only
+        cloudfront_prefix_list = ec2.Peer.prefix_list("pl-3b927c52")  # com.amazonaws.global.cloudfront.origin-facing
+
+        # Allow HTTP from CloudFront only (CloudFront→ALB uses HTTP_ONLY)
         self.alb_security_group.add_ingress_rule(
-            peer=ec2.Peer.any_ipv4(),
+            peer=cloudfront_prefix_list,
             connection=ec2.Port.tcp(80),
-            description="Allow HTTP from internet"
-        )
-        self.alb_security_group.add_ingress_rule(
-            peer=ec2.Peer.any_ipv4(),
-            connection=ec2.Port.tcp(443),
-            description="Allow HTTPS from internet"
+            description="Allow HTTP from CloudFront"
         )
 
         # Security Group for Backend ECS tasks
