@@ -23,8 +23,11 @@
 
         <div class="dashboard-grid">
             <!-- Factory Selection -->
-            <div class="card factory-overview">
-                <div class="card-title">Virtual Factory Selection</div>
+            <div class="card factory-overview" id="factory-overview">
+                <div class="card-title">
+                    Virtual Factory Selection
+                    <button class="expand-btn" data-card-id="factory-overview" title="Expand">⛶</button>
+                </div>
                 <div class="factory-selector">
                     <div class="factory-btn active" data-factory="ALL">
                         <div>ALL ENTERPRISES</div>
@@ -46,37 +49,52 @@
             </div>
 
             <!-- Metrics -->
-            <div class="card metrics">
-                <div class="card-title">Messages Received</div>
+            <div class="card metrics" id="messages-metric">
+                <div class="card-title">
+                    Messages Received
+                    <button class="expand-btn" data-card-id="messages-metric" title="Expand">⛶</button>
+                </div>
                 <div class="metric-value" id="message-count">0</div>
                 <div class="metric-label">Total MQTT Messages</div>
                 <div class="metric-change positive">Live from broker</div>
             </div>
 
-            <div class="card metrics">
-                <div class="card-title">OEE Score</div>
+            <div class="card metrics" id="oee-metric">
+                <div class="card-title">
+                    OEE Score
+                    <button class="expand-btn" data-card-id="oee-metric" title="Expand">⛶</button>
+                </div>
                 <div class="metric-value" style="color: var(--accent-green);" id="oee-score">--</div>
                 <div class="metric-label">24h Average</div>
                 <div class="metric-change positive" id="oee-status">Loading...</div>
             </div>
 
-            <div class="card metrics">
-                <div class="card-title">Active Sensors</div>
+            <div class="card metrics" id="sensors-metric">
+                <div class="card-title">
+                    Active Sensors
+                    <button class="expand-btn" data-card-id="sensors-metric" title="Expand">⛶</button>
+                </div>
                 <div class="metric-value" style="color: var(--accent-amber);" id="active-sensors">--</div>
                 <div class="metric-label">Data Streams</div>
                 <div class="metric-change positive">Detecting...</div>
             </div>
 
-            <div class="card metrics">
-                <div class="card-title">Anomalies</div>
+            <div class="card metrics" id="anomalies-metric">
+                <div class="card-title">
+                    Anomalies
+                    <button class="expand-btn" data-card-id="anomalies-metric" title="Expand">⛶</button>
+                </div>
                 <div class="metric-value" style="color: var(--accent-magenta);" id="anomaly-count">0</div>
                 <div class="metric-label">Detected by Claude</div>
                 <div class="metric-change negative">AI Analysis Active</div>
             </div>
 
             <!-- Factory Events -->
-            <div class="card live-stream">
-                <div class="card-title">Factory Events</div>
+            <div class="card live-stream" id="live-stream">
+                <div class="card-title">
+                    Factory Events
+                    <button class="expand-btn" data-card-id="live-stream" title="Expand">⛶</button>
+                </div>
                 <div class="event-filter-tabs">
                     <button class="event-tab active" onclick="filterEvents('all', this)">All</button>
                     <button class="event-tab" onclick="filterEvents('oee', this)">OEE</button>
@@ -96,10 +114,10 @@
             </div>
 
             <!-- AI Agent -->
-            <div class="card ai-agent">
+            <div class="card ai-agent" id="ai-agent">
                 <div class="card-title">
                     Claude AI Agent
-                    <button class="maximize-btn" onclick="openAgentModal()" title="Expand">⛶</button>
+                    <button class="expand-btn" data-card-id="ai-agent" title="Expand">⛶</button>
                 </div>
                 <div class="agent-header">
                     <div class="agent-avatar">C</div>
@@ -132,8 +150,11 @@
             </div>
 
             <!-- Factory Health Scorecard -->
-            <div class="card health-scorecard">
-                <div class="card-title">Factory Health Scorecard</div>
+            <div class="card health-scorecard" id="health-scorecard">
+                <div class="card-title">
+                    Factory Health Scorecard
+                    <button class="expand-btn" data-card-id="health-scorecard" title="Expand">⛶</button>
+                </div>
                 <div class="scorecard-content">
                     <!-- OEE Gauge -->
                     <div class="oee-gauge-container">
@@ -183,8 +204,11 @@
             </div>
 
             <!-- Equipment State Monitor -->
-            <div class="card equipment-state-panel">
-                <div class="card-title">Equipment State Monitor</div>
+            <div class="card equipment-state-panel" id="equipment-state-panel">
+                <div class="card-title">
+                    Equipment State Monitor
+                    <button class="expand-btn" data-card-id="equipment-state-panel" title="Expand">⛶</button>
+                </div>
                 <div class="state-summary">
                     <div class="state-count running"><span id="state-running">0</span> Running</div>
                     <div class="state-count idle"><span id="state-idle">0</span> Idle</div>
@@ -196,39 +220,57 @@
             </div>
 
             <!-- Production Line OEE -->
-            <div class="card line-oee-panel">
-                <div class="card-title" id="line-panel-title">Production Line OEE</div>
+            <div class="card line-oee-panel" id="line-oee-panel">
+                <div class="card-title" id="line-panel-title">
+                    Production Line OEE
+                    <button class="expand-btn" data-card-id="line-oee-panel" title="Expand">⛶</button>
+                </div>
                 <div class="line-oee-grid" id="line-oee-grid">
                     <div class="heatmap-loading">Loading line OEE...</div>
                 </div>
             </div>
 
             <!-- Chart Panels -->
-            <div class="card chart-panel">
-                <div class="card-title">OEE by Enterprise</div>
+            <div class="card chart-panel" id="oee-breakdown-chart-panel">
+                <div class="card-title">
+                    OEE by Enterprise
+                    <button class="expand-btn" data-card-id="oee-breakdown-chart-panel" title="Expand">⛶</button>
+                </div>
                 <canvas id="oee-breakdown-chart"></canvas>
             </div>
 
-            <div class="card chart-panel waste-chart">
-                <div class="card-title">Waste & Defect Trends (24h)</div>
+            <div class="card chart-panel waste-chart" id="waste-chart-panel">
+                <div class="card-title">
+                    Waste & Defect Trends (24h)
+                    <button class="expand-btn" data-card-id="waste-chart-panel" title="Expand">⛶</button>
+                </div>
                 <canvas id="waste-trend-chart"></canvas>
             </div>
 
-            <div class="card chart-panel">
-                <div class="card-title">Scrap by Production Line</div>
+            <div class="card chart-panel" id="scrap-chart-panel">
+                <div class="card-title">
+                    Scrap by Production Line
+                    <button class="expand-btn" data-card-id="scrap-chart-panel" title="Expand">⛶</button>
+                </div>
                 <canvas id="scrap-by-line-chart"></canvas>
             </div>
 
             <!-- Quality Metrics Panel -->
-            <div class="card quality-panel">
-                <div class="card-title">Quality Metrics by Enterprise</div>
+            <div class="card quality-panel" id="quality-panel">
+                <div class="card-title">
+                    Quality Metrics by Enterprise
+                    <button class="expand-btn" data-card-id="quality-panel" title="Expand">⛶</button>
+                </div>
                 <div class="quality-grid" id="quality-grid">
                     <div class="heatmap-loading">Loading quality metrics...</div>
                 </div>
             </div>
 
-            <div class="card chart-panel">
-                <div class="card-title">Production Heatmap</div>
+            <div class="card chart-panel" id="heatmap">
+                <div class="card-title">
+                    Production Heatmap
+                    <button class="expand-btn" data-card-id="heatmap" title="Expand">⛶</button>
+                </div>
                 <div class="heatmap-container" id="production-heatmap">
                     <div class="heatmap-loading">Loading factory status...</div>
                 </div>
@@ -384,6 +426,17 @@
     <button class="chat-toggle-btn" id="chat-toggle-btn" onclick="toggleChatPanel()">
         💬 Ask Agent
     </button>
+
+    <!-- Generic Card Modal Overlay -->
+    <div class="card-modal-overlay" id="card-modal-overlay">
+        <div class="card-modal">
+            <div class="card-modal-header">
+                <span class="card-modal-title" id="card-modal-title"></span>
+                <button class="modal-close-btn" onclick="closeCardModal()">×</button>
+            </div>
+            <div class="card-modal-content" id="card-modal-content"></div>
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer>
