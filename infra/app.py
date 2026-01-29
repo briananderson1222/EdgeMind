@@ -23,14 +23,14 @@ from stacks.database_stack import DatabaseStack
 from stacks.backend_stack import BackendStack
 from stacks.frontend_stack import FrontendStack
 from stacks.agentcore_stack import AgentCoreStack
+from stacks.knowledge_base_stack import KnowledgeBaseStack
 
 
 # Configuration
 PROJECT_NAME = "edgemind"
 ENVIRONMENT = "prod"
-AWS_ACCOUNT = "718815871498"
+AWS_ACCOUNT = "061051223662"
 AWS_REGION = "us-east-1"
-AWS_PROFILE = "reply"  # For local deployment
 
 
 app = cdk.App()
@@ -124,8 +124,17 @@ agentcore_stack = AgentCoreStack(
 )
 agentcore_stack.add_dependency(backend_stack)  # Need backend API URL
 
+# Stack 7: Knowledge Base (Bedrock KB with S3 Vectors for SOPs)
+knowledgebase_stack = KnowledgeBaseStack(
+    app, f"{PROJECT_NAME}-{ENVIRONMENT}-knowledgebase",
+    project_name=PROJECT_NAME,
+    environment=ENVIRONMENT,
+    env=env,
+    description="Bedrock Knowledge Base with S3 Vectors for SOP documents"
+)
+
 # Add tags to all resources
-for stack in [network_stack, secrets_stack, database_stack, backend_stack, frontend_stack, agentcore_stack]:
+for stack in [network_stack, secrets_stack, database_stack, backend_stack, frontend_stack, agentcore_stack, knowledgebase_stack]:
     cdk.Tags.of(stack).add("Project", PROJECT_NAME)
     cdk.Tags.of(stack).add("Environment", ENVIRONMENT)
     cdk.Tags.of(stack).add("ManagedBy", "CDK")
