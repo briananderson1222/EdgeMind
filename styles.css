@@ -2190,17 +2190,22 @@
             background: transparent;
             border: 1px solid rgba(0, 255, 255, 0.3);
             color: var(--accent-cyan);
-            padding: 4px 8px;
+            padding: 6px 8px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 0.9rem;
             margin-left: auto;
             opacity: 0.7;
             transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         .expand-btn:hover {
             opacity: 1;
             background: rgba(0, 255, 255, 0.2);
+        }
+        .expand-btn svg {
+            display: block;
         }
 
         /* Legacy maximize button (keep for backwards compatibility) */
