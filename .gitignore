@@ -51,3 +51,13 @@ CLAUDE.md
 
 # AgentCore (contains absolute paths and deployment state)
 .bedrock_agentcore.yaml
+agent/**/.bedrock_agentcore/
+
+# Kiro tasks (local planning)
+.kiro/tasks/
+
+# Generated files
+openapi-generated*.json
+
+# Deployed environment (contains secrets)
+.env.deployed
