@@ -62,6 +62,21 @@ const state = {
     }
 };
 
+/**
+ * Filter anomalies by enterprise selection.
+ * When enterprise is selected, includes:
+ * - Anomalies tagged with that enterprise
+ * - Anomalies with no enterprise tag that mention the enterprise in text
+ * When ALL is selected, returns all anomalies.
+ */
+function filterAnomaliesByEnterprise(anomalies, enterprise) {
+    if (enterprise === 'ALL') return anomalies;
+    return anomalies.filter(a =>
+        a.enterprise === enterprise ||
+        (!a.enterprise && a.text && a.text.includes(enterprise))
+    );
+}
+
 // Initialize Charts
 window.oeeBreakdownChart = null;
 window.wasteTrendChart = null;
@@ -1340,23 +1355,7 @@ function updateMetrics() {
     const anomalyCount = document.getElementById('anomaly-count');
     if (anomalyCount) {
         const enterprise = getEnterpriseParam();
-        let filteredAnomalies = state.anomalies;
-
-        if (enterprise !== 'ALL') {
-            // Filter anomalies by enterprise
-            filteredAnomalies = state.anomalies.filter(anomaly => {
-                // Check if anomaly has enterprise field (new format)
-                if (anomaly.enterprise) {
-                    return anomaly.enterprise === enterprise;
-                }
-                // Fallback: check if anomaly text contains enterprise name
-                if (anomaly.text && anomaly.text.includes(enterprise)) {
-                    return true;
-                }
-                return false;
-            });
-        }
-
+        const filteredAnomalies = filterAnomaliesByEnterprise(state.anomalies, enterprise);
         anomalyCount.textContent = filteredAnomalies.length;
     }
 }
@@ -1462,6 +1461,10 @@ function selectFactory(factory) {
     });
 
     updateMetrics();
+
+    // Re-filter insights panel with new enterprise selection
+    filterInsights(state.insightFilter);
+
     console.log('Filtering by factory:', factory);
 }
 
@@ -1779,34 +1782,38 @@ function applyInsightFilter(filterType, containerEl, tabSelector, onAnomalyClick
     // Clear content
     containerEl.innerHTML = '';
 
+    // Get enterprise filter
+    const selectedEnterprise = getEnterpriseParam();
+
     if (filterType === 'anomalies') {
-        // Show only anomalies
-        if (state.anomalies.length === 0) {
+        // Filter anomalies by enterprise using shared helper
+        const filteredAnomalies = filterAnomaliesByEnterprise(state.anomalies, selectedEnterprise);
+
+        if (filteredAnomalies.length === 0) {
+            const enterpriseText = selectedEnterprise !== 'ALL'
+                ? ` for ${escapeHtml(selectedEnterprise)}`
+                : '';
             containerEl.innerHTML = `
                 <div class="agent-insights">
-                    <div class="insight-text">No anomalies detected yet.</div>
+                    <div class="insight-text">No anomalies detected${enterpriseText}.</div>
                     <div class="insight-meta">Claude analyzes trends every 30 seconds</div>
                 </div>
             `;
         } else {
-            state.anomalies.forEach(anomaly => {
+            filteredAnomalies.forEach(anomaly => {
                 const el = document.createElement('div');
                 el.className = 'anomaly-item';
-
-                // Escape user-controlled content to prevent XSS
                 const escapedText = escapeHtml(anomaly.text);
-
                 el.innerHTML = `
                     <div>${escapedText}</div>
                     <div class="anomaly-time">${anomaly.timestamp ? new Date(anomaly.timestamp).toLocaleTimeString() : ''}</div>
                 `;
-                // Add click handler
                 el.addEventListener('click', () => onAnomalyClick(anomaly));
                 containerEl.appendChild(el);
             });
         }
     } else {
-        // Show all insights
+        // Show insights - filter by enterprise if selected
         if (state.insights.length === 0) {
             containerEl.innerHTML = `
                 <div class="agent-insights">
@@ -1814,11 +1821,57 @@ function applyInsightFilter(filterType, containerEl, tabSelector, onAnomalyClick
                     <div class="insight-meta">Status: Standby</div>
                 </div>
             `;
-        } else {
-            state.insights.forEach(insight => {
+            return;
+        }
+
+        let hasVisibleInsights = false;
+
+        state.insights.forEach(insight => {
+            if (selectedEnterprise !== 'ALL') {
+                // Enterprise filter active - show enterprise-specific content
+                if (insight.enterpriseInsights && insight.enterpriseInsights[selectedEnterprise]) {
+                    // Has enterprise-specific insight text
+                    const filteredInsight = {
+                        ...insight,
+                        summary: insight.enterpriseInsights[selectedEnterprise],
+                        insight: insight.enterpriseInsights[selectedEnterprise],
+                        // Also filter anomalies within this insight
+                        anomalies: filterAnomaliesByEnterprise(insight.anomalies || [], selectedEnterprise)
+                    };
+                    const insightEl = createInsightElement(filteredInsight);
+                    containerEl.appendChild(insightEl);
+                    hasVisibleInsights = true;
+                } else if (!insight.enterpriseInsights) {
+                    // No enterpriseInsights at all - show full insight (legacy/global)
+                    // But filter the anomalies within it
+                    const filteredInsight = {
+                        ...insight,
+                        anomalies: filterAnomaliesByEnterprise(insight.anomalies || [], selectedEnterprise)
+                    };
+                    const insightEl = createInsightElement(filteredInsight);
+                    containerEl.appendChild(insightEl);
+                    hasVisibleInsights = true;
+                }
+                // If enterpriseInsights exists but doesn't have selected enterprise, skip this insight
+            } else {
+                // ALL selected - show full insight
                 const insightEl = createInsightElement(insight);
                 containerEl.appendChild(insightEl);
-            });
+                hasVisibleInsights = true;
+            }
+        });
+
+        // Show empty state if no insights matched filter
+        if (!hasVisibleInsights) {
+            const enterpriseText = selectedEnterprise !== 'ALL'
+                ? ` for ${escapeHtml(selectedEnterprise)}`
+                : '';
+            containerEl.innerHTML = `
+                <div class="agent-insights">
+                    <div class="insight-text">No insights available${enterpriseText}.</div>
+                    <div class="insight-meta">Claude analyzes trends every 30 seconds</div>
+                </div>
+            `;
         }
     }
 }
@@ -1832,6 +1885,14 @@ function filterInsights(filterType, clickedTab) {
     if (!container) return;
 
     applyInsightFilter(filterType, container, '.insight-tabs .insight-tab', openAnomalyModal);
+
+    // Update anomaly tab counter to reflect filtered count
+    const tabCount = document.getElementById('anomaly-tab-count');
+    if (tabCount) {
+        const enterprise = getEnterpriseParam();
+        const filteredCount = filterAnomaliesByEnterprise(state.anomalies, enterprise).length;
+        tabCount.textContent = filteredCount;
+    }
 }
 
 // Add anomaly filter
