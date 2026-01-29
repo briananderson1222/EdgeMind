@@ -11,12 +11,11 @@ const { createCmmsProvider } = require('./lib/cmms-interface');
 const aiModule = require('./lib/ai');
 const vectorStore = require('./lib/vector');
 const { decodePayload, extractMetrics } = require('./lib/sparkplug/decoder');
-const { createAgentCoreClient } = require('./lib/agentcore');
 const { getEquipmentState, getSparkplugInfo, extractPayloadValue, normalizeState, classifyTopic, fanOutMessage } = require('./lib/mqtt/topic-classifier');
 
 // Foundation modules
 const CONFIG = require('./lib/config');
-const { factoryState, schemaCache, equipmentStateCache } = require('./lib/state');
+const { factoryState, schemaCache, equipmentStateCache, alarmCache, workOrderCache } = require('./lib/state');
 const {
   sanitizeInfluxIdentifier,
   formatDuration,
@@ -48,34 +47,50 @@ const {
 // Initialize services
 const app = express();
 
-// OpenAPI spec generation using swagger-jsdoc for inline annotations
-const GENERATE_OPENAPI = process.env.GENERATE_OPENAPI === 'true';
-if (GENERATE_OPENAPI) {
-  const swaggerSpec = swaggerJsdoc({
-    definition: {
-      openapi: '3.0.0',
-      info: {
-        title: 'EdgeMind Factory Intelligence API',
-        version: '2.0.0',
-        description: 'Real-time factory monitoring API for OEE analysis, equipment health, waste tracking, and batch processing. Supports three enterprises: A & B (discrete manufacturing with OEE) and C (pharmaceutical bioprocessing with ISA-88 batch control).'
-      },
-      tags: [
-        { name: 'oee', description: 'Overall Equipment Effectiveness (Availability × Performance × Quality). World-class target: 85%' },
-        { name: 'equipment', description: 'Equipment states: RUNNING, IDLE, DOWN, MAINTENANCE' },
-        { name: 'waste', description: 'Waste tracking. Enterprise A codes: CHK, DIM, SED. Enterprise B: SEAL, LABEL, FILL' },
-        { name: 'batch', description: 'ISA-88 batch control for Enterprise C pharmaceutical bioprocessing' },
-        { name: 'schema', description: 'Factory schema discovery: Enterprise > Site > Area > Machine' },
-        { name: 'agent', description: 'AI agent for factory analysis' },
-        { name: 'cmms', description: 'Maintenance management system integration' }
-      ]
-    },
-    apis: ['./server.js', './lib/**/*.js']
-  });
-  
-  app.get('/api-spec/v3', (req, res) => res.json(swaggerSpec));
-  app.get('/api-spec', (req, res) => res.json(swaggerSpec));
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// Format tool names for user-friendly display
+const TOOL_LABELS = {
+  'factory-api___getEquipmentStates': 'Checking equipment status',
+  'factory-api___getOEE': 'Fetching OEE metrics',
+  'factory-api___getWasteBreakdown': 'Analyzing waste data',
+  'factory-api___getFactoryStatus': 'Getting factory status',
+  'factory-api___getQualityMetrics': 'Retrieving quality metrics',
+  'factory-api___getTrends': 'Loading trend data',
+  'factory-api___getLineOEE': 'Fetching line OEE',
+  'factory-api___getScrapByLine': 'Analyzing scrap by line',
+  'retrieve': 'Searching knowledge base'
+};
+function formatToolName(name) {
+  return TOOL_LABELS[name] || name.replace(/^factory-api___/, '').replace(/([A-Z])/g, ' $1').trim();
 }
+
+// OpenAPI spec generation using swagger-jsdoc for inline annotations
+const swaggerSpec = swaggerJsdoc({
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'EdgeMind Factory Intelligence API',
+      version: '2.0.0',
+      description: 'Real-time factory monitoring API for OEE analysis, equipment health, waste tracking, and batch processing. Supports three enterprises: A & B (discrete manufacturing with OEE) and C (pharmaceutical bioprocessing with ISA-88 batch control).'
+    },
+    servers: [
+      { url: 'https://d16spdjesmvn8.cloudfront.net', description: 'Production' }
+    ],
+    tags: [
+      { name: 'oee', description: 'Overall Equipment Effectiveness (Availability × Performance × Quality). World-class target: 85%' },
+      { name: 'equipment', description: 'Equipment states: RUNNING, IDLE, DOWN, MAINTENANCE' },
+      { name: 'waste', description: 'Waste tracking. Enterprise A codes: CHK, DIM, SED. Enterprise B: SEAL, LABEL, FILL' },
+      { name: 'batch', description: 'ISA-88 batch control for Enterprise C pharmaceutical bioprocessing' },
+      { name: 'schema', description: 'Factory schema discovery: Enterprise > Site > Area > Machine' },
+      { name: 'agent', description: 'AI agent for factory analysis' },
+      { name: 'cmms', description: 'Maintenance management system integration' }
+    ]
+  },
+  apis: ['./server.js', './lib/**/*.js']
+});
+
+app.get('/api/api-spec/v3', (req, res) => res.json(swaggerSpec));
+app.get('/api/api-spec', (req, res) => res.json(swaggerSpec));
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const bedrockClient = new BedrockRuntimeClient({ region: CONFIG.bedrock.region });
 
@@ -95,24 +110,7 @@ if (CONFIG.cmms.enabled) {
   console.log('📋 CMMS integration disabled');
 }
 
-// Initialize AgentCore client
-let agentCoreClient = null;
-if (CONFIG.agentcore.agentId && CONFIG.agentcore.agentAliasId) {
-  try {
-    agentCoreClient = createAgentCoreClient({
-      region: CONFIG.bedrock.region,
-      agentId: CONFIG.agentcore.agentId,
-      agentAliasId: CONFIG.agentcore.agentAliasId
-    });
-    if (agentCoreClient) {
-      console.log('✅ AgentCore client initialized');
-    }
-  } catch (error) {
-    console.error(`❌ Failed to initialize AgentCore client: ${error.message}`);
-  }
-} else {
-  console.log('📋 AgentCore integration disabled (missing agentId or agentAliasId)');
-}
+// AgentCore client initialized later (see AGENT_URLS section)
 
 // Serve static files (frontend HTML)
 app.use(express.static(__dirname));
@@ -139,26 +137,22 @@ mqttClient.on('connect', async () => {
     });
   });
 
-  // Warm up schema cache and populate knownMeasurements (Phase 4)
-  try {
-    await refreshSchemaCache();
-    // Populate known measurements from cache
+  // Warm up schema cache and populate knownMeasurements (Phase 4) - non-blocking
+  refreshSchemaCache().then(() => {
     if (schemaCache.measurements.size > 0) {
       for (const m of schemaCache.measurements.keys()) {
         schemaCache.knownMeasurements.add(m);
       }
       console.log(`📋 Loaded ${schemaCache.knownMeasurements.size} known measurements from cache`);
     }
-  } catch (error) {
+  }).catch(error => {
     console.warn('Failed to warm up schema cache on startup:', error.message);
-  }
+  });
 
-  // Initialize vector store for anomaly persistence (RAG)
-  try {
-    await vectorStore.init({ bedrockClient });
-  } catch (vectorError) {
+  // Initialize vector store for anomaly persistence (RAG) - non-blocking
+  vectorStore.init({ bedrockClient }).catch(vectorError => {
     console.warn('Vector store initialization failed (continuing without RAG):', vectorError.message);
-  }
+  });
 
   // Initialize AI module with runtime dependencies
   aiModule.init({
@@ -265,17 +259,8 @@ mqttClient.on('message', async (topic, message) => {
         }
       }
 
-      // Track equipment state from Sparkplug metrics
-      const stateMetric = metrics.find(m => m.name.toLowerCase().includes('state') && m.valueType === 'string');
-      if (stateMetric && stateMetric.tags.deviceId) {
-        const equipmentKey = `${stateMetric.tags.enterprise}/${stateMetric.tags.site}/${stateMetric.tags.deviceId}`;
-        const normalized = normalizeStatus(stateMetric.value);
-        updateEquipmentState(equipmentKey, { ...normalized, reason: String(stateMetric.value) }, {
-          enterprise: stateMetric.tags.enterprise,
-          site: stateMetric.tags.site,
-          device: stateMetric.tags.deviceId
-        });
-      }
+      // Note: jpi namespace DDATA messages are site-level aggregates, not equipment
+      // Equipment state is tracked from abelara/* and Enterprise B/* topics instead
 
       // Broadcast to WebSocket clients (throttled - every 10th message)
       if (factoryState.stats.messageCount % 10 === 0 && metrics.length > 0) {
@@ -361,11 +346,52 @@ mqttClient.on('message', async (topic, message) => {
     }
   }
 
+  // Track alarm state changes
+  if (classified.type === 'alarm') {
+    const alarmKey = `${classified.tags.enterprise}/${classified.tags.machine}`;
+    const isActive = payload === 'true' || payload === '1' || payload === true;
+    const existing = alarmCache.alarms.get(alarmKey);
+    
+    alarmCache.alarms.set(alarmKey, {
+      ...classified.tags,
+      active: isActive,
+      topic,
+      lastUpdate: timestamp
+    });
+    
+    // Broadcast alarm state change
+    if (!existing || existing.active !== isActive) {
+      broadcastToClients({
+        type: 'alarm_state',
+        data: {
+          id: alarmKey,
+          ...classified.tags,
+          active: isActive,
+          timestamp
+        }
+      });
+      console.log(`[ALARM] ${alarmKey}: ${isActive ? 'ACTIVE' : 'CLEARED'}`);
+    }
+  }
+
+  // Track work orders
+  if (classified.type === 'production_metric' && classified.tags.metric?.startsWith('wo_')) {
+    const woKey = `${classified.tags.enterprise}/${classified.tags.site}/${classified.tags.machine}`;
+    workOrderCache.workOrders.set(woKey, {
+      ...classified.tags,
+      value: payload,
+      topic,
+      lastUpdate: timestamp
+    });
+  }
+
   // Write to InfluxDB
   try {
     const point = parseTopicToInflux(topic, payload);
-    writeApi.writePoint(point);
-    factoryState.stats.influxWrites++;
+    if (point) {
+      writeApi.writePoint(point);
+      factoryState.stats.influxWrites++;
+    }
   } catch (err) {
     factoryState.stats.influxWriteErrors = (factoryState.stats.influxWriteErrors || 0) + 1;
     if (factoryState.stats.influxWriteErrors % 100 === 1) {
@@ -379,8 +405,11 @@ mqttClient.on('message', async (topic, message) => {
     factoryState.messages.shift();
   }
 
-  // Broadcast to WebSocket clients (throttled - every 10th message)
-  if (factoryState.stats.messageCount % 10 === 0) {
+  // Always broadcast alarms immediately (bypass throttling)
+  const isAlarm = classified.type === 'alarm';
+  
+  // Broadcast to WebSocket clients (throttled - every 10th message, except alarms)
+  if (isAlarm || factoryState.stats.messageCount % 10 === 0) {
     // Check if message should be fanned out into multiple messages
     const fanOutMessages = fanOutMessage(topic, payload);
     if (fanOutMessages && fanOutMessages.length > 0) {
@@ -641,51 +670,89 @@ app.get('/api/equipment/:enterprise/:site/:machine/history', async (req, res) =>
   }
 });
 
-// Agent endpoints - separate runtimes for each agent type
-const AGENT_URLS = {
-  chat: process.env.AGENT_CHAT_URL || 'http://localhost:8080',
-  troubleshoot: process.env.AGENT_TROUBLESHOOT_URL || 'http://localhost:8081',
-  anomaly: process.env.AGENT_ANOMALY_URL || 'http://localhost:8082'
-};
+// Shared AgentCore Runtime client
+const agentRuntime = require('./lib/agentcore/runtime');
+const invokeAgent = agentRuntime.invoke;
+const useAgentCoreRuntime = agentRuntime.useRuntime;
 
-async function invokeAgent(agentType, prompt, sessionId) {
-  const url = AGENT_URLS[agentType] || AGENT_URLS.chat;
-  return fetch(`${url}/invocations`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, session_id: sessionId || 'default' })
-  });
-}
-
-app.post('/api/chat', express.json(), async (req, res) => {
+// Chat handler for /api/agent/chat
+async function handleChat(req, res) {
   const { prompt, sessionId } = req.body;
   if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
   try {
-    const response = await invokeAgent('chat', prompt, sessionId);
-    if (!response.ok) throw new Error(`Agent error: ${response.status}`);
+    const result = await invokeAgent('chat', prompt, sessionId, true); // stream=true
+    
+    if (result.isRuntime && result.isStream) {
+      // AgentCore Runtime SDK streaming response
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Session-Id', result.sessionId);
+      
+      for await (const chunk of result.stream) {
+        if (chunk) {
+          const raw = typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk);
+          // Parse SSE lines and forward text + tool use events
+          for (const line of raw.split('\n')) {
+            if (line.startsWith('data: ')) {
+              const content = line.slice(6).trim();
+              // Try to parse as JSON to detect tool use
+              try {
+                let parsed = JSON.parse(content);
+                // Handle double-encoded JSON (string containing JSON)
+                if (typeof parsed === 'string' && parsed.startsWith('{')) {
+                  try { parsed = JSON.parse(parsed); } catch {}
+                }
+                if (parsed.type === 'tool_use') {
+                  const label = formatToolName(parsed.name || 'tool');
+                  res.write(`data: ${JSON.stringify({ type: 'tool', name: label })}\n\n`);
+                } else if (typeof parsed === 'string') {
+                  res.write(`data: ${JSON.stringify(parsed)}\n\n`);
+                } else if (parsed.text || parsed.content) {
+                  res.write(`data: ${JSON.stringify(parsed.text || parsed.content)}\n\n`);
+                }
+              } catch {
+                // Plain text
+                if (content) res.write(`data: ${JSON.stringify(content)}\n\n`);
+              }
+            }
+          }
+        }
+      }
+      res.write(`data: [DONE]\n\n`);
+      res.end();
+    } else if (result.isRuntime) {
+      // Non-streaming fallback
+      res.json({ response: result.output, sessionId: result.sessionId });
+    } else {
+      // Local HTTP streaming response
+      const response = result.response;
+      if (!response.ok) throw new Error(`Agent error: ${response.status}`);
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      res.write(decoder.decode(value, { stream: true }));
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(decoder.decode(value, { stream: true }));
+      }
+      res.end();
     }
-    res.end();
   } catch (err) {
     console.error('Chat error:', err.message);
     res.status(500).json({ error: err.message });
   }
-});
+}
+
+app.post('/api/agent/chat', express.json(), handleChat);
 
 // Troubleshoot endpoint - specialized agent for equipment diagnostics
-// Uses context snapshot from UI, only needs KB access (no MCP/live data)
-app.post('/api/troubleshoot', express.json(), async (req, res) => {
+app.post('/api/agent/troubleshoot', express.json(), async (req, res) => {
   const { equipment, sessionId } = req.body;
   if (!equipment) return res.status(400).json({ error: 'equipment required' });
 
@@ -867,7 +934,10 @@ app.get('/api/oee/v2', async (req, res) => {
     if (enterprise === 'ALL') {
       // Run discovery and calculate for all enterprises
       await discoverOEESchema();
-      const enterprises = Object.keys(oeeConfig.enterprises);
+      // Filter out protocol artifacts (jpi, spBv1.0, null, etc.) - only real enterprises
+      const enterprises = Object.keys(oeeConfig.enterprises).filter(e =>
+        /^Enterprise\s|^abelara$|^Cappy Hour/i.test(e)
+      );
 
       const results = await Promise.all(
         enterprises.map(ent => calculateOEEv2(ent, site))
@@ -1086,6 +1156,26 @@ app.get('/api/equipment/states', async (req, res) => {
   }
 });
 
+// Active alarms endpoint
+app.get('/api/alarms', (req, res) => {
+  const alarms = [];
+  for (const [key, data] of alarmCache.alarms.entries()) {
+    if (data.active) {
+      alarms.push({ id: key, ...data });
+    }
+  }
+  res.json({ alarms, count: alarms.length, timestamp: new Date().toISOString() });
+});
+
+// Active work orders endpoint
+app.get('/api/workorders', (req, res) => {
+  const workOrders = [];
+  for (const [key, data] of workOrderCache.workOrders.entries()) {
+    workOrders.push({ id: key, ...data });
+  }
+  res.json({ workOrders, count: workOrders.length, timestamp: new Date().toISOString() });
+});
+
 /**
  * @swagger
  * /api/oee/lines:
@@ -1142,6 +1232,7 @@ app.get('/api/oee/lines', async (req, res) => {
           r._measurement == "metric_quality"
         )
         |> filter(fn: (r) => r._value > 0 and r._value <= 150)
+        |> filter(fn: (r) => exists r.area and r.area != "")
         ${enterpriseFilter}
         |> group(columns: ["enterprise", "site", "area", "_measurement"])
         |> mean()
@@ -1581,18 +1672,7 @@ app.get('/api/cmms/health', async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/agent/context:
- *   get:
- *     operationId: getAgentContext
- *     summary: Get comprehensive factory context for AI analysis
- *     description: Returns aggregated factory data including hierarchy, measurements, OEE metrics, and trends. Designed for AI agents to get a complete picture of factory state in one call.
- *     tags: [agent]
- *     responses:
- *       200:
- *         description: Comprehensive factory context data
- */
+// Agent context endpoint - comprehensive factory data for AI analysis
 app.get('/api/agent/context', async (req, res) => {
   // Track data source availability
   const dataSourceStatus = {
@@ -1784,123 +1864,41 @@ app.get('/api/schema/classifications', async (req, res) => {
 });
 
 // =============================================================================
-// AGENTCORE INTEGRATION ENDPOINTS
+// AGENTCORE INTEGRATION ENDPOINTS (not exposed in OpenAPI)
 // =============================================================================
 
-/**
- * @swagger
- * /api/agent/ask:
- *   post:
- *     operationId: askAgent
- *     summary: Ask the AI agent a question about the factory
- *     description: Sends a question to the AI agent for analysis. The agent can analyze OEE, equipment health, waste trends, and provide recommendations. Supports session continuity for follow-up questions.
- *     tags: [agent]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [question]
- *             properties:
- *               question:
- *                 type: string
- *                 description: Question about factory operations
- *               sessionId:
- *                 type: string
- *                 description: Optional session ID for conversation continuity
- *     responses:
- *       200:
- *         description: Agent response with answer
- *       503:
- *         description: AgentCore not configured
- */
+// Non-streaming chat endpoint
 app.post('/api/agent/ask', express.json(), async (req, res) => {
+  const { question, sessionId } = req.body;
+  if (!question) {
+    return res.status(400).json({ error: 'Missing question parameter' });
+  }
   try {
-    // Check if AgentCore is enabled
-    if (!agentCoreClient) {
-      return res.status(503).json({
-        error: 'AgentCore is not configured',
-        message: 'Set AGENTCORE_AGENT_ID and AGENTCORE_ALIAS_ID environment variables'
-      });
-    }
-
-    // Validate request body
-    const { question, sessionId } = req.body;
-
-    if (!question || typeof question !== 'string') {
-      return res.status(400).json({
-        error: 'Missing or invalid question parameter',
-        message: 'Question must be a non-empty string'
-      });
-    }
-
-    if (question.length > 1000) {
-      return res.status(400).json({
-        error: 'Question too long',
-        message: 'Question must be less than 1000 characters'
-      });
-    }
-
-    if (sessionId && (typeof sessionId !== 'string' || sessionId.length > 100)) {
-      return res.status(400).json({
-        error: 'Invalid sessionId parameter',
-        message: 'sessionId must be a string less than 100 characters'
-      });
-    }
-
-    console.log(`[AgentCore API] Received question: "${question.substring(0, 50)}..."`);
-
-    // Invoke the agent
-    const result = await agentCoreClient.ask(question, sessionId);
-
-    res.json({
-      answer: result.answer,
-      sessionId: result.sessionId,
-      timestamp: new Date().toISOString()
-    });
-
+    const result = await invokeAgent('chat', question, sessionId, false);
+    res.json({ answer: result.output || '', sessionId: result.sessionId, timestamp: new Date().toISOString() });
   } catch (error) {
-    console.error('AgentCore ask endpoint error:', error);
-    res.status(500).json({
-      error: 'Failed to process question',
-      message: error.message
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
-/**
- * @swagger
- * /api/agent/health:
- *   get:
- *     operationId: getAgentHealth
- *     summary: Check AI agent health and connectivity
- *     description: Returns the status of the AI agent including whether it's configured and reachable.
- *     tags: [agent]
- *     responses:
- *       200:
- *         description: Agent health status
- */
+// Agent health check
 app.get('/api/agent/health', async (req, res) => {
-  if (!agentCoreClient) {
-    return res.json({
-      enabled: false,
-      healthy: false,
-      message: 'AgentCore not configured'
-    });
-  }
-
+  const chatUrl = agentRuntime.LOCAL_URLS.chat;
   try {
-    const health = await agentCoreClient.healthCheck();
-
+    const response = await fetch(`${chatUrl}/`, { 
+      method: 'GET',
+      signal: AbortSignal.timeout(2000) 
+    });
+    console.log('[Agent Health] Response status:', response.status);
     res.json({
       enabled: true,
-      ...health,
+      healthy: true,
+      message: 'Agent responding',
       timestamp: new Date().toISOString()
     });
-
   } catch (error) {
-    res.status(500).json({
+    console.error('[Agent Health] Error:', error.message);
+    res.json({
       enabled: true,
       healthy: false,
       message: error.message,
@@ -2080,7 +2078,7 @@ app.post('/api/influx/query', express.json(), async (req, res) => {
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  if (GENERATE_OPENAPI) console.log('📝 OpenAPI spec available at /api-spec/v3');
+  console.log('📝 OpenAPI spec available at /api/api-spec/v3');
   console.log(`🏭 MQTT: ${mqttClient.connected ? 'Connected' : 'Connecting...'}`);
   console.log(`📈 InfluxDB: ${CONFIG.influxdb.url}`);
   if (CONFIG.disableInsights) {

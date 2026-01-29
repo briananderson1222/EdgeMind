@@ -54,10 +54,13 @@ const state = {
     },
     latestOee: null,
     uniqueTopics: new Set(),
+    allMeasurements: [],  // Full measurement data with enterprise info
     messageRateHistory: [],
     topicCounts: {},
     enterpriseCounts: { 'Enterprise A': 0, 'Enterprise B': 0, 'Enterprise C': 0 },
     selectedFactory: 'ALL',  // 'ALL', 'Enterprise A', 'Enterprise B', or 'Enterprise C'
+    selectedSite: '',  // '' = All Sites, or specific site name
+    factoryStatus: null,  // Cached factory status data
     insightFilter: 'all',  // 'all' or 'anomalies'
     eventFilter: 'all',  // 'all', 'oee', 'state', 'alarm'
     equipmentStates: new Map(),  // Map of equipment ID to state
@@ -71,7 +74,8 @@ const state = {
         availabilityMin: 65,
         defectRateWarning: 2,
         defectRateCritical: 5
-    }
+    },
+    notificationsEnabled: true
 };
 
 function getActiveAlarms() {
@@ -482,8 +486,12 @@ async function fetchFactoryStatus() {
         const response = await fetch(url);
         const data = await response.json();
 
+        // Cache for site selector
+        state.factoryStatus = data;
+
         if (data.enterprises) {
             renderProductionHeatmap(data.enterprises);
+            updateScorecardSiteSelector();
         }
     } catch (error) {
         console.error('Failed to fetch factory status:', error);
@@ -535,6 +543,28 @@ function renderProductionHeatmap(enterprises) {
     container.innerHTML = html;
 }
 
+// Check AI agent health and update status indicator
+async function checkAgentHealth() {
+    const aiStatus = document.getElementById('ai-status');
+    if (!aiStatus) return;
+
+    try {
+        const response = await fetch('/api/agent/health');
+        const data = await response.json();
+
+        if (data.enabled && data.healthy) {
+            aiStatus.textContent = 'AI Analysis Active';
+            aiStatus.className = 'metric-change positive';
+        } else {
+            aiStatus.textContent = 'AI Offline';
+            aiStatus.className = 'metric-change negative';
+        }
+    } catch {
+        aiStatus.textContent = 'AI Offline';
+        aiStatus.className = 'metric-change negative';
+    }
+}
+
 // Connect to WebSocket backend
 function connectWebSocket() {
     console.log('🔌 Connecting to backend...');
@@ -565,6 +595,9 @@ function connectWebSocket() {
         // Update system status
         document.getElementById('system-status').textContent = '● SYSTEM ONLINE';
         document.getElementById('agent-state').textContent = '● Monitoring factory data streams';
+
+        // Check AI agent health
+        checkAgentHealth();
     };
 
     ws.onmessage = (event) => {
@@ -667,15 +700,6 @@ function handleServerMessage(message) {
             // Real-time MQTT message
             const topic = message.data.topic || '';
 
-            // Filter by selected enterprise
-            const mqttEnterprise = getEnterpriseParam();
-            if (mqttEnterprise !== 'ALL') {
-                // Topics start with "Enterprise A/", "Enterprise B/", or "Enterprise C/"
-                if (!topic.startsWith(mqttEnterprise + '/')) {
-                    return; // Skip messages not matching filter
-                }
-            }
-
             state.messages.push(message.data);
             state.stats.messageCount++;
             messagesSinceLastRate++;
@@ -690,8 +714,8 @@ function handleServerMessage(message) {
             // Track enterprise counts for distribution chart
             const entMatch = topic.match(/^(Enterprise [ABC])\//i);
             if (entMatch) {
-                const enterprise = entMatch[1];
-                state.enterpriseCounts[enterprise] = (state.enterpriseCounts[enterprise] || 0) + 1;
+                const ent = entMatch[1];
+                state.enterpriseCounts[ent] = (state.enterpriseCounts[ent] || 0) + 1;
             }
 
             // Handle alarm messages
@@ -704,7 +728,11 @@ function handleServerMessage(message) {
                 handleEnergyMessage(message.data);
             }
 
-            addMQTTMessageToStream(message.data);
+            // Only add to visible stream if matches enterprise filter
+            const mqttEnterprise = getEnterpriseParam();
+            if (mqttEnterprise === 'ALL' || topic.startsWith(mqttEnterprise + '/')) {
+                addMQTTMessageToStream(message.data);
+            }
             updateMetrics();
             break;
 
@@ -898,6 +926,7 @@ function getToastContainer() {
 }
 
 function showDownToast() {
+    if (!state.notificationsEnabled) return;
     clearTimeout(toastClearTimer);
     toastClearTimer = setTimeout(() => {
         const container = getToastContainer();
@@ -935,26 +964,27 @@ function renderDownToasts() {
     
     const header = document.createElement('div');
     header.className = 'toast-group-header';
-    header.innerHTML = `<span>⚠️ ${downList.length} Equipment Down</span>${downList.length > 1 ? `<span class="toast-group-count">${group.classList.contains('expanded') ? '▲' : '▼'}</span>` : ''}`;
+    header.innerHTML = `<span>⚠️&nbsp; ${downList.length} Equipment Down</span><span class="toast-group-chevron">▼</span>`;
     header.onclick = () => {
         group.classList.toggle('expanded');
         toastExpanded = group.classList.contains('expanded');
-        const count = header.querySelector('.toast-group-count');
-        if (count) count.textContent = toastExpanded ? '▲' : '▼';
     };
     group.appendChild(header);
     
     const items = document.createElement('div');
     items.className = 'toast-group-items';
-    downList.forEach((equipment) => {
+    downList.forEach((eq) => {
         const item = document.createElement('div');
         item.className = 'toast-group-item';
-        item.innerHTML = `<span>${equipment.machine || equipment.name}: ${equipment.reason || 'Unknown'}</span>`;
-        const btn = document.createElement('button');
-        btn.className = 'toast-action-btn';
-        btn.textContent = 'Troubleshoot';
-        btn.onclick = (e) => { e.stopPropagation(); showEquipmentModal(equipment.id, true); };
-        item.appendChild(btn);
+        const hierarchy = [eq.enterprise, eq.site, eq.area].filter(Boolean).join(' › ');
+        item.innerHTML = `
+            <div class="toast-item-hierarchy">${hierarchy || 'Unknown location'}</div>
+            <div class="toast-item-header">
+                <span class="toast-item-machine">${eq.machine || eq.name || 'Unknown'}</span>
+                <button class="toast-action-btn" onclick="event.stopPropagation(); showEquipmentModal('${eq.id}', true)">Troubleshoot</button>
+            </div>
+            <div class="toast-item-reason">${eq.reason || eq.status || 'Unknown reason'}</div>
+        `;
         items.appendChild(item);
     });
     group.appendChild(items);
@@ -1311,7 +1341,7 @@ async function fetchEquipmentHistory(equipment, targetId = 'equipment-history') 
 }
 
 async function queryTroubleshootAgent(equipment) {
-    const response = await fetch('/api/troubleshoot', {
+    const response = await fetch('/api/agent/troubleshoot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -2008,17 +2038,16 @@ async function fetchActiveSensorCount() {
         const data = await response.json();
 
         if (data.measurements && Array.isArray(data.measurements)) {
+            // Store full measurement data for enterprise filtering
+            state.allMeasurements = data.measurements;
+            
             // Pre-populate uniqueTopics Set with known measurements from server
-            // This preserves the persistent count across page loads
             data.measurements.forEach(measurement => {
                 state.uniqueTopics.add(measurement.name);
             });
 
-            // Update display
-            const activeSensors = document.getElementById('active-sensors');
-            if (activeSensors) {
-                activeSensors.textContent = state.uniqueTopics.size.toLocaleString();
-            }
+            // Update display (will be filtered by updateMetrics)
+            updateMetrics();
             console.log(`📊 Loaded ${data.measurements.length} active sensors from schema cache`);
         }
     } catch (error) {
@@ -2028,22 +2057,40 @@ async function fetchActiveSensorCount() {
 
 // Update metrics display
 function updateMetrics() {
-    // Update message count
+    const enterprise = getEnterpriseParam();
+    
+    // Update message count - base from schema + real-time increment
     const msgCount = document.getElementById('message-count');
     if (msgCount) {
-        msgCount.textContent = state.stats.messageCount.toLocaleString();
+        if (enterprise === 'ALL') {
+            const base = state.allMeasurements.reduce((sum, m) => sum + (m.count || 0), 0);
+            msgCount.textContent = (base + state.stats.messageCount).toLocaleString();
+        } else {
+            const filtered = state.allMeasurements.filter(m => 
+                m.enterprises && m.enterprises.includes(enterprise)
+            );
+            const base = filtered.reduce((sum, m) => sum + (m.count || 0), 0);
+            const realtime = state.enterpriseCounts[enterprise] || 0;
+            msgCount.textContent = (base + realtime).toLocaleString();
+        }
     }
 
-    // Update active sensors count
+    // Update active sensors count - filter by enterprise
     const activeSensors = document.getElementById('active-sensors');
     if (activeSensors) {
-        activeSensors.textContent = state.uniqueTopics.size.toLocaleString();
+        if (enterprise === 'ALL') {
+            activeSensors.textContent = state.allMeasurements.length.toLocaleString();
+        } else {
+            const filtered = state.allMeasurements.filter(m => 
+                m.enterprises && m.enterprises.includes(enterprise)
+            );
+            activeSensors.textContent = filtered.length.toLocaleString();
+        }
     }
 
     // Update anomaly count - filter by selected enterprise
     const anomalyCount = document.getElementById('anomaly-count');
     if (anomalyCount) {
-        const enterprise = getEnterpriseParam();
         let filteredAnomalies = state.anomalies;
 
         if (enterprise !== 'ALL') {
@@ -2133,6 +2180,7 @@ function displayClaudeResponse(data) {
 // Factory selection
 function selectFactory(factory, event) {
     state.selectedFactory = factory;
+    state.selectedSite = '';  // Reset site selection when enterprise changes
     document.querySelectorAll('.factory-btn').forEach(btn => {
         btn.classList.remove('active');
     });
@@ -2151,6 +2199,14 @@ function selectFactory(factory, event) {
         window.healthChart.update();
     }
 
+    // Show '--' for OEE while loading
+    const oeeScore = document.getElementById('oee-score');
+    if (oeeScore) oeeScore.textContent = '--';
+    updateOEEGauge(0);
+
+    // Update site selector for new enterprise
+    updateScorecardSiteSelector();
+
     // Refresh all data for selected enterprise
     refreshAllData();
 
@@ -2158,6 +2214,52 @@ function selectFactory(factory, event) {
     updateMetrics();
 
     console.log('Filtering by factory:', factory);
+}
+
+// Update site selector dropdown from cached factory status
+function updateScorecardSiteSelector() {
+    const select = document.getElementById('scorecard-site-select');
+    if (!select || !state.factoryStatus?.enterprises) return;
+
+    const enterprise = getEnterpriseParam();
+    const currentValue = select.value;
+
+    let sites = [];
+    if (enterprise === 'ALL') {
+        state.factoryStatus.enterprises.forEach(ent => {
+            ent.sites?.forEach(s => sites.push({ enterprise: ent.name, site: s.name }));
+        });
+    } else {
+        const ent = state.factoryStatus.enterprises.find(e => e.name === enterprise);
+        if (ent?.sites) {
+            sites = ent.sites.map(s => ({ enterprise, site: s.name }));
+        }
+    }
+
+    sites.sort((a, b) => a.site.localeCompare(b.site));
+
+    select.innerHTML = '<option value="">All Sites</option>';
+    sites.forEach(s => {
+        const label = enterprise === 'ALL' ? `${s.site} — ${s.enterprise}` : s.site;
+        const opt = document.createElement('option');
+        opt.value = s.site;
+        opt.textContent = label;
+        select.appendChild(opt);
+    });
+
+    if (currentValue && sites.some(s => s.site === currentValue)) {
+        select.value = currentValue;
+    } else {
+        select.value = '';
+        state.selectedSite = '';
+    }
+}
+
+// Handle site selector change
+function onScorecardSiteChange() {
+    const select = document.getElementById('scorecard-site-select');
+    state.selectedSite = select ? select.value : '';
+    fetchOEE();
 }
 
 // Refresh all data cards with current filter
@@ -2172,34 +2274,47 @@ function refreshAllData() {
     fetchLineOEE();
 }
 
-// Fetch OEE from API (24h average)
+// Fetch OEE from API and update both top metrics card and scorecard gauge
 async function fetchOEE() {
+    const enterprise = getEnterpriseParam();
+    const displayName = enterprise === 'ALL' ? 'All Enterprises' : enterprise;
+
+    // Fetch for top metrics card (enterprise only)
     try {
-        const enterprise = getEnterpriseParam();
-        const response = await fetch(`/api/oee?enterprise=${encodeURIComponent(enterprise)}`);
+        const response = await fetch(`/api/oee/v2?enterprise=${encodeURIComponent(enterprise)}`);
         const data = await response.json();
+        const oee = data.oee ?? data.overall?.oee ?? null;
 
         const oeeScore = document.getElementById('oee-score');
         const oeeStatus = document.getElementById('oee-status');
-
-        if (data.average !== null) {
-            oeeScore.textContent = data.average.toFixed(1) + '%';
-            const displayName = enterprise === 'ALL' ? 'All Enterprises' : enterprise;
-            oeeStatus.textContent = `${data.period} avg • ${displayName}`;
+        if (oee !== null) {
+            oeeScore.textContent = oee.toFixed(1) + '%';
+            oeeStatus.textContent = `24h avg • ${displayName}`;
             oeeStatus.className = 'metric-change positive';
-
-            // Update scorecard gauge
-            updateOEEGauge(data.average);
+            // Update gauge too if no site filter
+            if (!state.selectedSite) updateOEEGauge(oee);
         } else {
             oeeScore.textContent = '--';
             oeeStatus.textContent = 'No OEE data available';
             oeeStatus.className = 'metric-change';
-            updateOEEGauge(0);
+            if (!state.selectedSite) updateOEEGauge(0);
         }
     } catch (error) {
         console.error('Failed to fetch OEE:', error);
         document.getElementById('oee-status').textContent = 'API error';
-        updateOEEGauge(0);
+    }
+
+    // Fetch for scorecard gauge with site filter (if site selected)
+    if (state.selectedSite) {
+        try {
+            const response = await fetch(`/api/oee/v2?enterprise=${encodeURIComponent(enterprise)}&site=${encodeURIComponent(state.selectedSite)}`);
+            const data = await response.json();
+            const oee = data.oee ?? data.overall?.oee ?? null;
+            updateOEEGauge(oee !== null ? oee : 0);
+        } catch (error) {
+            console.error('Failed to fetch scorecard OEE:', error);
+            updateOEEGauge(0);
+        }
     }
 }
 
@@ -2363,6 +2478,7 @@ function openSettingsModal() {
     document.getElementById('setting-availabilityMin').value = state.thresholdSettings.availabilityMin;
     document.getElementById('setting-defectRateWarning').value = state.thresholdSettings.defectRateWarning;
     document.getElementById('setting-defectRateCritical').value = state.thresholdSettings.defectRateCritical;
+    document.getElementById('setting-notifications').checked = state.notificationsEnabled;
 
     overlay.classList.add('active');
 }
@@ -2382,6 +2498,9 @@ async function saveSettings() {
         defectRateWarning: parseFloat(document.getElementById('setting-defectRateWarning').value),
         defectRateCritical: parseFloat(document.getElementById('setting-defectRateCritical').value)
     };
+
+    // Save notifications locally (not synced to server)
+    state.notificationsEnabled = document.getElementById('setting-notifications').checked;
 
     // Validate
     for (const [key, value] of Object.entries(settings)) {
@@ -2638,6 +2757,9 @@ window.addEventListener('load', () => {
     fetchEquipmentStates();
     fetchLineOEE();
 
+    // Initialize active alerts display
+    updateActiveAlerts();
+
     // Update message rate every second
     setInterval(updateMessageRate, 1000);
 
@@ -2731,7 +2853,7 @@ async function sendChat() {
     const bubbleDiv = assistantMsg.querySelector('.bubble');
     
     try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/api/agent/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt, sessionId: chatSessionId })
@@ -2750,18 +2872,26 @@ async function sendChat() {
             const chunk = decoder.decode(value, { stream: true });
             for (const line of chunk.split('\n')) {
                 if (line.startsWith('data: ')) {
+                    const content = line.slice(6).trim();
+                    if (content === '[DONE]') continue;
                     try {
-                        const data = JSON.parse(line.slice(6));
-                        text += typeof data === 'string' ? data : (data.text || data.content || '');
+                        const data = JSON.parse(content);
+                        if (data.type === 'tool') {
+                            text += `\n🔧 *${data.name}*\n`;
+                        } else {
+                            text += typeof data === 'string' ? data : (data.text || data.content || '');
+                        }
                     } catch {
-                        text += line.slice(6);
+                        text += content;
                     }
-                } else if (line.trim() && !line.startsWith('event:')) {
-                    text += line;
                 }
             }
             bubbleDiv.innerHTML = parseMarkdown(text);
-            messages.scrollTop = messages.scrollHeight;
+            // Only auto-scroll if user is near bottom
+            if (messages.scrollHeight - messages.scrollTop <= messages.clientHeight + 100) {
+                messages.scrollTop = messages.scrollHeight;
+            }
+            updateScrollToBottomBtn(messages);
         }
         
         assistantMsg.classList.remove('streaming');
@@ -2771,7 +2901,38 @@ async function sendChat() {
     }
     
     sendBtn.disabled = false;
+    updateScrollToBottomBtn(messages);
 }
+
+function updateScrollToBottomBtn(container) {
+    const panel = document.getElementById('chat-panel');
+    if (!panel) return;
+    
+    let btn = document.getElementById('chat-scroll-btn');
+    const isNearBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
+    
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'chat-scroll-btn';
+        btn.className = 'chat-scroll-btn';
+        btn.innerHTML = '↓';
+        btn.onclick = () => {
+            container.scrollTop = container.scrollHeight;
+            btn.classList.remove('visible');
+        };
+        panel.appendChild(btn);
+    }
+    
+    btn.classList.toggle('visible', !isNearBottom);
+}
+
+// Add scroll listener to chat messages
+document.addEventListener('DOMContentLoaded', () => {
+    const messages = document.getElementById('chat-messages');
+    if (messages) {
+        messages.addEventListener('scroll', () => updateScrollToBottomBtn(messages));
+    }
+});
 
 function escapeHtml(text) {
     const div = document.createElement('div');
