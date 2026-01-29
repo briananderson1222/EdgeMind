@@ -109,7 +109,7 @@ npm run dev
 | `GET /api/schema/hierarchy` | Topic hierarchy: Enterprise > Site > Area > Machine |
 | `GET /api/factory/status` | Hierarchical OEE status by enterprise and site |
 
-See [CLAUDE.md](CLAUDE.md) for complete API documentation and WebSocket message types.
+Full API documentation available at `/api/docs` (Swagger UI).
 
 ## Environment Variables
 
@@ -131,31 +131,34 @@ See [CLAUDE.md](CLAUDE.md) for complete API documentation and WebSocket message 
 
 ```
 EdgeMind/
-├── server.js                  # Backend: MQTT, InfluxDB, WebSocket, Claude
-├── index.html                 # Live dashboard (production)
-├── factory-live.html          # Live dashboard (development)
-├── factory-command-center.html # Static mockup (no backend)
+├── server.js                  # Backend: MQTT, InfluxDB, WebSocket, AI agents
+├── app.js                     # Frontend JavaScript
+├── index.html                 # Live dashboard
+├── styles.css                 # Dashboard styles
 ├── docker-compose.yml         # Docker Compose configuration
 ├── Dockerfile                 # Container build configuration
 ├── .env.template              # Environment variable template
-├── CLAUDE.md                  # AI-assisted development guide
+├── README.md                  # This file
 ├── CONTRIBUTING.md            # Contribution guidelines
-└── docs/
-    └── edgemind_architecture_python.png  # Architecture diagram
+├── agent/                     # AgentCore agents (Strands SDK)
+│   ├── chat/                  # Chat assistant agent
+│   ├── anomaly/               # Anomaly detection agent
+│   └── troubleshoot/          # Equipment troubleshooting agent
+├── lib/                       # Backend modules
+│   ├── agentcore/             # AgentCore runtime client
+│   ├── ai/                    # AI analysis module
+│   ├── oee/                   # OEE calculation
+│   └── schema/                # Factory schema discovery
+├── infra/                     # AWS CDK infrastructure
+├── Deployment Scripts/        # Deployment utilities
+│   └── deploy-agents.sh       # AgentCore agent deployment
+├── knowledge-base/            # SOP documents for KB
+└── docs/                      # Documentation
 ```
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for internal contribution guidelines.
-
-## AI-Assisted Development
-
-This project uses [CLAUDE.md](CLAUDE.md) to provide context for AI-assisted development with Claude Code. The file contains:
-- Detailed architecture documentation
-- API endpoint specifications
-- MQTT topic structure
-- InfluxDB schema
-- WebSocket message types
 
 ---
 
