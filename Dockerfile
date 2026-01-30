@@ -15,8 +15,8 @@ COPY lib/ ./lib/
 
 # Copy frontend files (served by backend)
 COPY index.html ./
-COPY styles.css ./
-COPY app.js ./
+COPY css/ ./css/
+COPY js/ ./js/
 
 # Expose the application port
 EXPOSE 3000
