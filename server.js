@@ -157,12 +157,15 @@ mqttClient.on('message', async (topic, message) => {
   factoryState.stats.lastUpdate = timestamp;
 
   // DEMO DATA NAMESPACE INTERCEPT
-  // Check if this is demo-injected data (topic starts with concept-reply/)
+  // Check if this is demo-injected data (namespace at position [1] after enterprise)
   let isInjected = false;
   let actualTopic = topic;
-  if (topic.startsWith('concept-reply/')) {
+  const DEMO_NS = CONFIG.demo?.namespace || 'concept-reply';
+  const topicParts = topic.split('/');
+  if (topicParts.length > 2 && topicParts[1] === DEMO_NS) {
     isInjected = true;
-    actualTopic = topic.substring('concept-reply/'.length); // Strip namespace prefix
+    topicParts.splice(1, 1);
+    actualTopic = topicParts.join('/');
     console.log(`[DEMO] Intercepted demo data: ${topic} -> ${actualTopic}`);
   }
 
