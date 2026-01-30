@@ -446,4 +446,65 @@ capacity_provider_strategies=[
 
 ---
 
+### ADR-012: Demo MQTT Topic Convention — Namespace at Position [1] (2026-01-30)
+
+**Context:**
+- Demo engine publishes simulated factory data back to the shared MQTT broker
+- Initial implementation prefixed topics with namespace: `concept-reply/Enterprise B/Site1/...`
+- Other hackathon participants (e.g., MaintainX) use convention: `Enterprise B/maintainx/Site1/...`
+- Namespace as prefix broke the standard topic structure (Enterprise at position [0])
+
+**Decision:**
+- Place participant namespace at position [1] after enterprise: `Enterprise B/concept-reply/Site1/area/machine/...`
+- Server intercept strips namespace before processing: `topicParts.splice(1, 1)`
+- Detection is position-based (`topicParts[1] === DEMO_NS`), not prefix-based
+
+**Alternatives Considered:**
+- Namespace as prefix (`concept-reply/Enterprise B/...`) → Rejected: breaks topic structure convention used by all other participants
+- Namespace as suffix → Rejected: not how other participants do it
+- No namespace (publish as raw enterprise topics) → Rejected: can't distinguish demo data from real factory data
+
+**Consequences:**
+- ✅ Follows hackathon convention established by other participants
+- ✅ Enterprise remains at position [0] for standard topic parsing
+- ✅ Server can detect and strip demo namespace cleanly
+- ⚠️ Requires all demo topic strings to be restructured (11 scenarios + 4 engine topics)
+
+**Commit:** `70d92d9`
+
+---
+
+### ADR-013: npm Overrides for Transitive Dependency Vulnerabilities (2026-01-30)
+
+**Context:**
+- GitHub Actions deploy blocked by `npm audit --audit-level=high` failing on `fast-xml-parser@5.2.5` (CVE: GHSA-37qj-frw5-hhjh)
+- Vulnerability is in a transitive dependency: `@aws-sdk/xml-builder` → `fast-xml-parser`
+- AWS SDK v3.972.2 (latest) still pins the vulnerable version
+- Initial reaction was to bypass audit with `|| true` — user correctly pushed back on this
+
+**Decision:**
+- Use npm `overrides` field in `package.json` to force the patched version:
+  ```json
+  "overrides": {
+    "fast-xml-parser": "5.3.4"
+  }
+  ```
+- Keep `npm audit --audit-level=high` strict (no `|| true` bypass)
+
+**Alternatives Considered:**
+- `npm audit || true` bypass → Rejected: silences ALL future audit failures, not just this one. User correctly identified this as too aggressive.
+- Wait for AWS SDK update → Rejected: blocks all deploys indefinitely. AWS hasn't released a fix yet.
+- `--ignore` specific advisory → Rejected: npm doesn't support `--ignore` natively without third-party tools
+
+**Consequences:**
+- ✅ Audit gate remains strict — future vulnerabilities will still block
+- ✅ Only the specific transitive dependency is overridden
+- ✅ Clean audit pass
+- ⚠️ Must periodically check if AWS SDK has updated and remove override when no longer needed
+- ⚠️ Override could mask breaking changes in fast-xml-parser (low risk — patch version bump)
+
+**Commit:** `97ccfa1`
+
+---
+
 <!-- Add new decisions above this line -->

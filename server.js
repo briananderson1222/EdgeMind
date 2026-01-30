@@ -94,18 +94,32 @@ const TREND_ANALYSIS_INTERVAL = 30000; // Analyze trends every 30 seconds
 // Connect to MQTT broker
 console.log('🏭 Connecting to ProveIt! Virtual Factory...');
 const mqttClient = mqtt.connect(CONFIG.mqtt.host, {
+  clientId: `edgemind-${require('os').hostname()}-${process.pid}`,
   username: CONFIG.mqtt.username,
   password: CONFIG.mqtt.password,
-  reconnectPeriod: 5000
+  reconnectPeriod: 5000,
+  clean: false
 });
+
+// Guard flag to prevent duplicate initialization on reconnect
+let initialized = false;
 
 mqttClient.on('connect', async () => {
   console.log('✅ Connected to MQTT broker!');
+
+  // Always re-subscribe on reconnect
   CONFIG.mqtt.topics.forEach(topic => {
     mqttClient.subscribe(topic, (err) => {
       if (!err) console.log(`📡 Subscribed to: ${topic}`);
     });
   });
+
+  // Only initialize once
+  if (initialized) {
+    console.log('♻️ Reconnected — skipping initialization');
+    return;
+  }
+  initialized = true;
 
   // Warm up schema cache and populate knownMeasurements (Phase 4)
   try {

@@ -252,4 +252,92 @@ This file tracks bugs encountered and their solutions for future reference.
   - This is an InfluxDB/Flux gotcha that's easy to miss and produces subtly wrong results
 - **Files affected**: `lib/oee/index.js`
 
+### 2026-01-30 - OEE Blended Mean Inflates Dashboard Values
+- **Issue**: Dashboard card showed 76.4% OEE for Enterprise A while AI insights reported 60.8%
+- **Root Cause**: Legacy `queryOEE()` averaged Availability, Performance, Quality, AND OEE into a single `mean()`, inflating the result. The v2 endpoint correctly separated A/P/Q/OEE.
+- **Solution**: Redirected `queryOEE()` and `queryOEEBreakdown()` to delegate to `calculateOEEv2()`, eliminating the legacy blended-mean code path
+- **Prevention**: Only one OEE calculation path should exist. All endpoints should delegate to the tier-based v2 system.
+- **Commit**: `fafaee4`
+
+### 2026-01-30 - AVEVA Enterprise Name Collision
+- **Issue**: Two separate "AVEVA - DALLAS" and "Dallas Line 1" entries appeared for the same site; enterprises appeared duplicated
+- **Root Cause**: MQTT broker publishes both `Enterprise A` and `AVEVA Enterprise A` topic prefixes. No normalization at write time, so InfluxDB stored both as separate tag values.
+- **Solution**: Added enterprise/site alias normalization maps in `lib/influx/writer.js` with `normalizeTag()` applied at write time. Old data self-heals within 24h query window.
+- **Prevention**: Always normalize incoming tag values at the InfluxDB write layer. Add new aliases to `ENTERPRISE_ALIASES` or `SITE_ALIASES` maps when new naming variants appear.
+- **Commit**: `fafaee4`
+
+### 2026-01-30 - normalizeTag() Null Crash on Sparkplug Paths
+- **Issue**: Server crash when Sparkplug B messages provided null enterprise/site values
+- **Root Cause**: `normalizeTag()` didn't handle null/undefined inputs from Sparkplug topic parsing
+- **Solution**: Added null guard: `if (!value || typeof value !== 'string') return value || 'unknown'`
+- **Prevention**: All tag normalization functions must handle null/undefined gracefully
+- **Commit**: `fafaee4`
+
+### 2026-01-30 - totalOee += null Produces NaN
+- **Issue**: Enterprise-level OEE averages returned NaN when any site had null OEE
+- **Root Cause**: `totalOee += null` evaluates to NaN in JavaScript, poisoning the running sum
+- **Solution**: Added null check before accumulating: skip sites with null OEE, only average sites with valid values
+- **Commit**: `fafaee4`
+
+### 2026-01-30 - Tier 2 OEE Treats 0% as Null
+- **Issue**: Legitimate 0% OEE values were treated as missing data
+- **Root Cause**: Truthiness check `normAvail ? ... : null` treats `0` as falsy, so 0% availability was treated as null
+- **Solution**: Changed to explicit null check: `normAvail !== null ? ... : null`
+- **Prevention**: Never use truthiness checks for numeric values that can legitimately be 0. Always use `!== null` or `!== undefined`.
+- **Commit**: `fafaee4`
+
+### 2026-01-30 - Dockerfile References Deleted Files After CSS Modularization
+- **Issue**: Docker build failed: `COPY styles.css ./` and `COPY app.js ./` — files no longer exist after splitting into `css/` and `js/` directories
+- **Root Cause**: Dockerfile wasn't updated when frontend was modularized from monolithic files to directory-based modules
+- **Solution**: Changed to `COPY css/ ./css/` and `COPY js/ ./js/`
+- **Prevention**: When restructuring files (especially renaming or splitting), always update Dockerfile COPY commands
+- **Commit**: `4a18841`
+
+### 2026-01-30 - Persona Sub-Nav Race Condition
+- **Issue**: Menu items disappeared when clicking persona chips — sub-nav showed blank
+- **Root Cause**: `incrementSwitchCounter()` was called inside `setTimeout` guards, incrementing the counter on every poll check. The guard `if (switchCounter !== currentSwitch)` always triggered because the counter kept changing.
+- **Solution**: Changed setTimeout guards to read-only `switchCounter` comparison instead of calling `incrementSwitchCounter()` inside the guard
+- **Prevention**: Never mutate state inside guard conditions. Guard checks should be read-only comparisons.
+- **Commit**: `31df780`
+
+### 2026-01-30 - Page Always Resets to COO View on Refresh
+- **Issue**: Refreshing the browser always returned to COO persona regardless of which persona was active
+- **Root Cause**: No persistence mechanism — persona state was only in memory
+- **Solution**: Added URL hash-based persistence (`#coo`, `#plant`, `#demo`). Hash is written on persona switch, read on init, and monitored via `hashchange` listener.
+- **Commit**: `7c1c00c`
+
+### 2026-01-30 - Production Line OEE Styles Lost in CSS Modularization
+- **Issue**: Enterprise B's Production Line OEE panel rendered unstyled — cards stacked without grid layout
+- **Root Cause**: ~170 lines of CSS for `.line-oee-panel`, `.line-card`, `.line-oee-grid` etc. were dropped during the CSS modularization refactor (splitting `styles.css` into 20 files)
+- **Solution**: Created `css/line-oee.css` with recovered styles from git history (`git show fe37f36^:styles.css`), added import in `index.html`
+- **Prevention**: When splitting a monolithic CSS file, verify every class selector is preserved in one of the output files. Use `grep` to cross-reference.
+- **Commit**: `a6f999b`
+
+### 2026-01-30 - Production Heatmap Ignores Enterprise Filter
+- **Issue**: Production heatmap showed all enterprises regardless of filter selection
+- **Root Cause**: `/api/factory/status` endpoint never read `req.query.enterprise`, and `queryFactoryStatus()` accepted no parameters — always queried all enterprises
+- **Solution**: Added enterprise parameter to `queryFactoryStatus(enterprise)` with input validation and conditional Flux filter. Updated endpoint to pass `req.query.enterprise`.
+- **Commit**: `cc0c662`
+
+### 2026-01-30 - MQTT Reconnect Storm (Cascading Failures)
+- **Issue**: Multiple `✅ Connected to MQTT broker!` log entries, Bedrock 429 throttling, InfluxDB timeouts — all simultaneously
+- **Root Cause**: No stable `clientId` on MQTT connection caused broker to treat each reconnect as new client. The `on('connect')` handler re-initialized everything (trend analysis loop, schema refresh, etc.) on every reconnect, spawning duplicate intervals.
+- **Solution**: Added stable `clientId: edgemind-${hostname}-${pid}`, `clean: false` for session persistence, and `initialized` guard flag on connect handler to prevent duplicate initialization
+- **Prevention**: MQTT clients MUST use stable clientIds. Connect handlers must be idempotent — use guard flags to prevent re-initialization on reconnect.
+- **Commit**: `dbeded3`
+
+### 2026-01-30 - Demo MQTT Publishes Not Appearing on Broker (QoS 0)
+- **Issue**: Demo engine logged "Published" but messages never appeared in MQTT Explorer
+- **Root Cause**: QoS 0 (fire-and-forget) combined with reconnect instability silently dropped messages
+- **Solution**: Changed both `mqttClient.publish()` calls in demo engine from `{ qos: 0 }` to `{ qos: 1 }` (at-least-once delivery)
+- **Prevention**: Use QoS 1 for any publishes that need confirmation. QoS 0 is only appropriate for high-frequency telemetry where occasional loss is acceptable.
+- **Commit**: `dbeded3`
+
+### 2026-01-30 - npm audit Blocks GitHub Actions Deploy (fast-xml-parser CVE)
+- **Issue**: `npm audit --audit-level=high` exit code 1 — blocked deploy pipeline
+- **Root Cause**: `fast-xml-parser@5.2.5` (transitive dependency via `@aws-sdk/xml-builder@3.972.2`) has vulnerability GHSA-37qj-frw5-hhjh. AWS SDK hadn't updated to the patched version.
+- **Solution**: Added npm `overrides` in `package.json` to force `fast-xml-parser@5.3.4`. Audit now passes cleanly.
+- **Prevention**: Use npm `overrides` for transitive dependency vulnerabilities when the direct dependency maintainer hasn't released a fix. Check periodically if the upstream has updated and remove the override.
+- **Commit**: `97ccfa1`
+
 <!-- Add new bugs above this line -->
