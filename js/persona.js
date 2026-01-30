@@ -12,6 +12,9 @@ export function switchPersona(key) {
     personaState.activePersona = key;
     const currentSwitch = incrementSwitchCounter();
 
+    // Update URL hash
+    window.location.hash = key;
+
     // Update body theme attribute
     const themeMap = { coo: 'coo', plant: 'plant', demo: 'demo' };
     document.body.setAttribute('data-theme', themeMap[key]);
@@ -127,6 +130,18 @@ export function initPersonaNavigation() {
         }
     });
 
-    // Initialize to COO persona
-    switchPersona('coo');
+    // Handle browser back/forward and hash changes
+    window.addEventListener('hashchange', () => {
+        const hash = window.location.hash.slice(1); // Remove '#' prefix
+        const validPersonas = ['coo', 'plant', 'demo'];
+        if (validPersonas.includes(hash)) {
+            switchPersona(hash);
+        }
+    });
+
+    // Read initial persona from URL hash, or default to COO
+    const initialHash = window.location.hash.slice(1); // Remove '#' prefix
+    const validPersonas = ['coo', 'plant', 'demo'];
+    const initialPersona = validPersonas.includes(initialHash) ? initialHash : 'coo';
+    switchPersona(initialPersona);
 }
