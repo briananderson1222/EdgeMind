@@ -588,7 +588,13 @@ app.get('/api/oee/breakdown', async (req, res) => {
 // NEW: Factory status endpoint with hierarchical enterprise/site OEE
 app.get('/api/factory/status', async (req, res) => {
   try {
-    const status = await queryFactoryStatus();
+    // SECURITY: Validate enterprise parameter
+    const enterprise = validateEnterprise(req.query.enterprise);
+    if (enterprise === null) {
+      return res.status(400).json({ error: 'Invalid enterprise parameter' });
+    }
+
+    const status = await queryFactoryStatus(enterprise);
     res.json(status);
   } catch (error) {
     console.error('Factory status query error:', error);
