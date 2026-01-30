@@ -1,6 +1,6 @@
 // PERSONA SYSTEM - Navigation and view switching
 
-import { personaState, personaDefaults, demoState, incrementSwitchCounter } from './state.js';
+import { personaState, personaDefaults, demoState, switchCounter, incrementSwitchCounter } from './state.js';
 
 /**
  * Switch active persona (COO, Plant Manager, Demo Control)
@@ -29,13 +29,13 @@ export function switchPersona(key) {
         if (panel.dataset.panel === key) {
             panel.style.display = 'flex';
             setTimeout(() => {
-                if (currentSwitch !== incrementSwitchCounter()) return;
+                if (currentSwitch !== switchCounter) return;
                 panel.classList.add('active');
             }, 10);
         } else {
             panel.classList.remove('active');
             setTimeout(() => {
-                if (currentSwitch !== incrementSwitchCounter()) return;
+                if (currentSwitch !== switchCounter) return;
                 panel.style.display = 'none';
             }, 200);
         }
