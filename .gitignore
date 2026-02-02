@@ -44,7 +44,3 @@ coverage/
 
 # Backup files from sed
 *.bak
-
-# AI Helpers
-
-CLAUDE.md
