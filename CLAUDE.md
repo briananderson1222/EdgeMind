@@ -319,6 +319,8 @@ lib/demo/
 - **Test location**: `lib/__tests__/*.test.js`
 - **Test suites**: validation, influx writer, OEE calculation, CMMS MaintainX provider
 
+**IMPORTANT: All tests must pass before pushing any frontend or backend code changes.** Run `npm test` and verify the full suite passes. CI will also run `npm test` — failed tests block deployment.
+
 ## Git Workflow
 
 - Never add `Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>` to commit messages
