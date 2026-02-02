@@ -62,6 +62,13 @@ import {
     pauseTimer,
     resetTimer
 } from './demo-timer.js';
+import { init as initCOOEnterprise, cleanup as cleanupCOOEnterprise } from './coo-enterprise.js';
+import { init as initCOOTrends, cleanup as cleanupCOOTrends } from './coo-trends.js';
+import { init as initCOOAgent, cleanup as cleanupCOOAgent, sendQuestion as sendCOOAgentQuestion, askSuggested as askCOOSuggested } from './coo-agent.js';
+import { init as initLineStatus, cleanup as cleanupLineStatus } from './plant-line-status.js';
+import { init as initOEEDrilldown, cleanup as cleanupOEEDrilldown } from './plant-oee-drilldown.js';
+import { init as initEquipmentHealth, cleanup as cleanupEquipmentHealth, filterEquipment } from './plant-equipment.js';
+import { init as initAlerts, cleanup as cleanupAlerts, filterAlerts } from './plant-alerts.js';
 
 // Expose all functions that are called from HTML onclick handlers to window
 window.switchPersona = switchPersona;
@@ -94,6 +101,10 @@ window.askClaudeQuestion = function() {
 window.launchScenario = launchScenario;
 window.stopScenario = stopScenario;
 window.stopInjection = stopInjection;
+window.askCOOQuestion = askCOOSuggested;
+window.sendCOOQuestion = sendCOOAgentQuestion;
+window.filterEquipmentByState = filterEquipment;
+window.filterAlertsBySeverity = filterAlerts;
 window.demoResetData = demoResetData;
 window.setTimerPreset = setTimerPreset;
 window.setTimerCustom = setTimerCustom;
@@ -222,17 +233,53 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Watch for persona view changes to initialize demo views
+    // Track previously active view for cleanup
+    let previousActiveView = null;
+
+    // Cleanup map for views that need it
+    const viewCleanup = {
+        'coo-enterprise': cleanupCOOEnterprise,
+        'coo-trends': cleanupCOOTrends,
+        'coo-agent': cleanupCOOAgent,
+        'plant-line-status': cleanupLineStatus,
+        'plant-oee-drilldown': cleanupOEEDrilldown,
+        'plant-equipment': cleanupEquipmentHealth,
+        'plant-alerts': cleanupAlerts
+    };
+
+    // Watch for persona view changes to initialize views
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                 const target = mutation.target;
                 if (target.classList.contains('persona-view') && target.classList.contains('active')) {
                     const view = target.dataset.view;
+
+                    // Cleanup previous view if needed
+                    if (previousActiveView && previousActiveView !== view && viewCleanup[previousActiveView]) {
+                        viewCleanup[previousActiveView]();
+                    }
+                    previousActiveView = view;
+
+                    // Initialize the newly active view
                     if (view === 'demo-scenarios') {
                         initDemoScenarios();
                     } else if (view === 'demo-inject') {
                         initDemoInject();
+                    } else if (view === 'coo-enterprise') {
+                        initCOOEnterprise();
+                    } else if (view === 'coo-trends') {
+                        initCOOTrends();
+                    } else if (view === 'coo-agent') {
+                        initCOOAgent();
+                    } else if (view === 'plant-line-status') {
+                        initLineStatus();
+                    } else if (view === 'plant-oee-drilldown') {
+                        initOEEDrilldown();
+                    } else if (view === 'plant-equipment') {
+                        initEquipmentHealth();
+                    } else if (view === 'plant-alerts') {
+                        initAlerts();
                     }
                 }
             }
