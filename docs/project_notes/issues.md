@@ -14,10 +14,9 @@ Completed work and issue tracking. For quick reference - full details live in gi
 ## Entries
 
 ### 2025-01 - Backend Modularization
-- **Status**: In Progress
-- **Description**: Extracting server.js into lib/ modules
-- **Branch**: `refactor/modularization`
-- **Progress**: Core modules extracted (config, influx, schema, oee, ai, cmms)
+- **Status**: Completed
+- **Description**: Extracted server.js into lib/ modules (config, influx, schema, oee, ai, cmms, demo, vector)
+- **Branch**: `refactor/modularization` (merged to main)
 
 ### 2026-01-15 - Deployment Scripts ChromaDB Integration
 - **Status**: Completed
@@ -117,5 +116,35 @@ Completed work and issue tracking. For quick reference - full details live in gi
 - **Status**: In Progress
 - **Description**: `sub_HV_250_001_PV` field type conflict (float vs string). Writer doesn't unwrap JSON strings or maintain a type registry. Root cause identified by code-reviewer but fix not yet implemented.
 - **Files**: `lib/influx/writer.js`
+
+### 2026-01-31 - Frontend Modularization (CSS + JS)
+- **Status**: Completed
+- **Description**: Monolithic `styles.css` (~3,869 lines) split into 20 CSS files in `css/`. Monolithic `app.js` (~3,368 lines) split into 15 ES modules in `js/`. Files exceeded 25k token agent read limits.
+- **Commits**: `f3ae1a2` (CSS), `9f116ba` (JS), `fe37f36` (cleanup)
+- **Files**: `css/*.css` (20 files), `js/*.js` (15 files), `index.html`, `deploy.yml`, `CLAUDE.md`
+
+### 2026-01-31 - Build 7 Remaining Persona Views
+- **Status**: Completed
+- **Description**: Built 3 COO views (Enterprise Comparison, Trend Analysis, Agent Q&A) and 4 Plant Manager views (Line Status, OEE Drill-down, Equipment Health, Alerts & Work Orders). Used git worktree on feature/remaining-views branch, merged to dev.
+- **Commits**: `52481f0` (views), `1abb270` (comments), `23e4cfa` (ESLint fixes)
+- **Files**: `js/coo-*.js` (3), `js/plant-*.js` (4), `css/coo-views.css`, `css/plant-views.css`, `index.html`
+
+### 2026-02-02 - Enable CMMS (MaintainX) on Dev Environment
+- **Status**: Completed
+- **Description**: CMMS integration was disabled on EC2 dev instance. Root cause: docker-compose didn't map CMMS env vars to container. Also fixed env var typo (CMMS_ENABLE → CMMS_ENABLED).
+- **Commit**: `79f5c09`
+- **Files**: `deploy/docker-compose.yml`, `Deployment Scripts/docker-compose.yml`
+
+### 2026-02-02 - Fix MaintainX API Integration (3 Bugs)
+- **Status**: Completed
+- **Description**: Three cascading bugs in MaintainX provider: (1) URL construction dropped `/v1` base path → 404, (2) unsupported `sort` query param → 500, (3) invalid payload fields (`status`, `customFields`) + wrong priority value (`URGENT`) → 400. All fixed and regression tests added (48 tests).
+- **Commits**: `c74d8fc` (URL fix), `096aa57` (sort param), `86a328b` (payload), `ee63a0a` (tests)
+- **Files**: `lib/cmms-maintainx.js`, `lib/__tests__/cmms-maintainx.test.js` (new)
+
+### 2026-02-02 - Pin GitHub Actions Runners to ubuntu-24.04
+- **Status**: Completed
+- **Description**: Repeated runner pickup delays with `ubuntu-latest`. Pinned all 3 workflows to `ubuntu-24.04`.
+- **Commit**: `65e8219`
+- **Files**: `.github/workflows/deploy.yml`, `.github/workflows/deploy-backend.yml`, `.github/workflows/deploy-frontend.yml`
 
 <!-- Add new entries above this line -->

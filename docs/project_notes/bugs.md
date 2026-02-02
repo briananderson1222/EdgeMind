@@ -340,4 +340,37 @@ This file tracks bugs encountered and their solutions for future reference.
 - **Prevention**: Use npm `overrides` for transitive dependency vulnerabilities when the direct dependency maintainer hasn't released a fix. Check periodically if the upstream has updated and remove the override.
 - **Commit**: `97ccfa1`
 
+### 2026-02-02 - Docker-Compose Not Passing CMMS Env Vars to Container
+- **Issue**: CMMS showed "disabled" in backend logs despite `CMMS_ENABLED=true` being in `.env` file on EC2
+- **Root Cause**: Docker Compose `.env` file is only used for `${VAR}` substitution within the compose file itself. Env vars must be explicitly listed in the `environment:` section to be passed into the container. `CMMS_ENABLED` and `MAINTAINX_API_KEY` were missing from the backend service environment.
+- **Solution**: Added all 6 CMMS env vars to backend service in both `deploy/docker-compose.yml` and `Deployment Scripts/docker-compose.yml`
+- **Prevention**: When adding new env vars to `lib/config.js`, always update docker-compose environment sections to pass them into the container.
+- **Commit**: `79f5c09`
+
+### 2026-02-02 - MaintainX API URL Construction Drops /v1 Base Path (404)
+- **Issue**: CMMS health check returned 404 Not Found from MaintainX API
+- **Root Cause**: `new URL('/workorders', 'https://api.getmaintainx.com/v1')` resolves to `https://api.getmaintainx.com/workorders` (dropping `/v1`) because a leading `/` in the path makes it relative to the origin root, not the base path. Classic JavaScript `URL` constructor gotcha.
+- **Solution**: Normalize URL construction: ensure baseUrl ends with `/`, strip leading `/` from path before joining:
+  ```javascript
+  const base = this.baseUrl.endsWith('/') ? this.baseUrl : this.baseUrl + '/';
+  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+  const url = new URL(cleanPath, base);
+  ```
+- **Prevention**: Never use `new URL()` with paths starting with `/` when the base URL has a path component. Always normalize both sides.
+- **Commit**: `c74d8fc`
+
+### 2026-02-02 - MaintainX Work Orders List Returns 500 (Invalid Sort Param)
+- **Issue**: Work orders panel showed "Failed to load work orders: 500"
+- **Root Cause**: `listRecentWorkOrders()` sent `sort=createdAt:desc` query parameter which MaintainX API doesn't support. MaintainX uses cursor-based pagination only.
+- **Solution**: Removed `limit` and `sort` query params, call `/workorders` without params
+- **Prevention**: Don't assume REST API query parameters — verify against actual API docs before shipping.
+- **Commit**: `096aa57`
+
+### 2026-02-02 - MaintainX Work Order Creation Returns 400 (Invalid Payload Fields)
+- **Issue**: AI agent detected anomalies but all work order creations failed with 400 Bad Request
+- **Root Cause**: `createWorkOrder()` payload included fields MaintainX doesn't accept: `status: 'OPEN'`, `customFields`, `locationId`, `assigneeId`. Also mapped severity `high` to priority `URGENT` which is not a valid MaintainX priority value (valid: NONE, LOW, MEDIUM, HIGH).
+- **Solution**: Stripped payload to only `{ title, description, priority }`. Fixed priority mapping: `high` → `HIGH` (not `URGENT`).
+- **Prevention**: Only send API fields confirmed in official documentation. The MaintainX API accepts: `title`, `description`, `priority` for work order creation.
+- **Commit**: `86a328b`
+
 <!-- Add new bugs above this line -->

@@ -186,11 +186,60 @@ if (oee === null && availability && performance && quality) {
 
 ---
 
+## CMMS Integration (MaintainX)
+
+### Configuration
+- **Provider**: MaintainX (`https://api.getmaintainx.com/v1`)
+- **Enable**: Set `CMMS_ENABLED=true` in `.env`
+- **API Key**: Set `MAINTAINX_API_KEY` in `.env`
+- **Auto Work Orders**: Created automatically when AI detects `high` severity anomalies (30s analysis loop)
+- **Valid Priority Values**: `NONE`, `LOW`, `MEDIUM`, `HIGH` (NOT `URGENT`)
+- **API Accepts**: Only `title`, `description`, `priority` fields for work order creation
+
+### Docker-Compose CMMS Env Vars (IMPORTANT)
+All CMMS env vars must be explicitly listed in docker-compose `environment:` section:
+```yaml
+- CMMS_ENABLED=${CMMS_ENABLED:-false}
+- CMMS_PROVIDER=${CMMS_PROVIDER:-maintainx}
+- MAINTAINX_API_KEY=${MAINTAINX_API_KEY:-}
+```
+Docker `.env` vars are NOT auto-forwarded to containers.
+
+### URL Construction Gotcha
+`new URL('/path', 'https://host/v1')` drops `/v1` because leading `/` resolves from origin root. Must normalize:
+```javascript
+const base = this.baseUrl.endsWith('/') ? this.baseUrl : this.baseUrl + '/';
+const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+```
+
+---
+
+## Dev Environment (EC2)
+
+- **Host**: `18.232.156.144`
+- **SSH**: `ssh -i ~/.ssh/edgemind-demo.pem ec2-user@18.232.156.144`
+- **App Dir**: `/home/ec2-user/app`
+- **Dev URL**: `https://dev.edge-mind.concept-reply-sandbox.com`
+- **Deploy**: Push to `dev` branch triggers `deploy.yml` → ECR build → SSM deploy to EC2
+- **Logs**: `docker-compose logs -f edgemind-backend`
+
+---
+
+## Testing
+
+- **Framework**: Jest
+- **Run**: `npm test`
+- **Test Suites**: 5 (validation, influx writer, OEE calculation x2, CMMS MaintainX)
+- **Total Tests**: 179
+
+---
+
 ## Git Workflow
 
-- **Main Branch**: `main`
-- **Current Feature Branch**: `feature/persona-navbar`
+- **Main Branch**: `main` (production deploys to ECS Fargate + S3/CloudFront)
+- **Dev Branch**: `dev` (dev deploys to EC2 via SSM)
 - **Commit Convention**: No `Co-Authored-By` lines
+- **CI Runners**: Pinned to `ubuntu-24.04` (not `ubuntu-latest` — avoids runner pickup delays)
 
 ---
 
