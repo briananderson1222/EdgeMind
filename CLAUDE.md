@@ -22,7 +22,7 @@ Node.js Server (server.js)
             ↓
         Broadcasts insights via WebSocket
             ↓
-Frontend (factory-live.html) ← WebSocket (port 8080)
+Frontend (index.html) ← WebSocket (port 3000, /ws path)
 ```
 
 **Key Components:**
@@ -69,7 +69,7 @@ lib/
 
 ```
 index.html           # HTML structure, loads CSS and JS modules
-css/                 # Modular CSS (20 files, ~165 lines avg)
+css/                 # Modular CSS (22 files)
 ├── variables.css    # CSS custom properties, persona themes
 ├── base.css         # Reset, body, grid/scanline backgrounds
 ├── animations.css   # All @keyframes
@@ -88,9 +88,11 @@ css/                 # Modular CSS (20 files, ~165 lines avg)
 ├── modals.css       # All modal overlays
 ├── chat.css         # Chat panel
 ├── demo.css         # Demo control UI
+├── coo-views.css    # COO persona view styles
+├── plant-views.css  # Plant Manager persona view styles
 ├── footer.css       # Footer branding
 └── responsive.css   # Media queries
-js/                  # ES modules (15 files, ~220 lines avg)
+js/                  # ES modules (22 files)
 ├── app.js           # Entry point: imports all, exposes window globals, init
 ├── state.js         # Shared state objects and constants
 ├── utils.js         # escapeHtml, formatMs, utility functions
@@ -103,6 +105,13 @@ js/                  # ES modules (15 files, ~220 lines avg)
 ├── stream.js        # MQTT message stream display
 ├── modals.js        # All modal dialogs
 ├── chat.js          # Chat panel functionality
+├── coo-enterprise.js # COO: Enterprise comparison view
+├── coo-trends.js    # COO: Trend analysis with Chart.js charts
+├── coo-agent.js     # COO: Agent Q&A with POST /api/agent/ask
+├── plant-line-status.js    # Plant Mgr: Line status grid
+├── plant-oee-drilldown.js  # Plant Mgr: OEE gauge + charts
+├── plant-equipment.js      # Plant Mgr: Filterable equipment grid
+├── plant-alerts.js         # Plant Mgr: Alerts + CMMS work orders
 ├── demo-scenarios.js # Demo scenario launcher
 ├── demo-inject.js   # Anomaly injection controls
 └── demo-timer.js    # Reset controls, presentation timer
@@ -162,15 +171,39 @@ curl http://localhost:3000/api/schema/measurements
 - `GET /api/oee/v2?enterprise={ALL|Enterprise A|Enterprise B|Enterprise C}&site={optional}` - Enhanced OEE calculation with tier-based strategy. Returns OEE with calculation metadata (tier, method, confidence, measurements used).
 - `GET /api/oee/discovery` - Returns discovered OEE schema for all enterprises, showing available measurements and which tier each enterprise uses
 
+### CMMS (MaintainX Integration)
+
+- `GET /api/cmms/health` - CMMS provider health check (enabled, healthy, provider name)
+- `GET /api/cmms/work-orders?limit={N}` - List recent work orders from MaintainX (max 50)
+- `GET /api/cmms/work-orders/:id` - Get work order status by ID
+
+### Demo Control
+
+- `GET /api/demo/scenarios` - List available demo scenarios
+- `POST /api/demo/scenarios/:id/start` - Start a demo scenario
+- `POST /api/demo/scenarios/:id/stop` - Stop a running scenario
+- `POST /api/demo/inject` - Inject an anomaly (type, equipment, severity, duration)
+- `GET /api/demo/status` - Get demo engine status
+- `POST /api/demo/reset` - Reset demo state
+
+### Agent (Bedrock AgentCore)
+
+- `POST /api/agent/ask` - Send question to orchestrator agent
+- `GET /api/agent/context` - Get comprehensive factory context for agentic workflows
+
 ### Health
 
 - `GET /health` - Server health check with MQTT and InfluxDB connection status
-```
 
 ## Environment Variables
 
-- `ANTHROPIC_API_KEY` - Required for Claude AI analysis
 - `PORT` - HTTP server port (default: 3000)
+- `AWS_REGION` - AWS region for Bedrock (default: us-east-1)
+- `CMMS_ENABLED` - Set to 'true' to enable MaintainX CMMS integration
+- `MAINTAINX_API_KEY` - MaintainX API key (required when CMMS enabled)
+- `DISABLE_INSIGHTS` - Set to 'true' to disable AI analysis loop
+
+Note: AI uses **AWS Bedrock** (not Anthropic API directly). No ANTHROPIC_API_KEY needed.
 
 ## MQTT Topic Structure
 
@@ -268,11 +301,32 @@ cdk deploy edgemind-prod-backend --profile reply
 cdk diff --profile reply
 ```
 
+## Backend Modules (lib/demo/)
+
+Demo engine for conference presentation:
+
+```
+lib/demo/
+├── engine.js        # ScenarioRunner, InjectionManager, REST endpoints
+├── scenarios.js     # 6 pre-configured factory scenarios
+└── profiles.js      # 5 anomaly type profiles
+```
+
+## Testing
+
+- **Framework**: Jest
+- **Run**: `npm test`
+- **Test location**: `lib/__tests__/*.test.js`
+- **Test suites**: validation, influx writer, OEE calculation, CMMS MaintainX provider
+
+**IMPORTANT: All tests must pass before pushing any frontend or backend code changes.** Run `npm test` and verify the full suite passes. CI will also run `npm test` — failed tests block deployment.
+
 ## Git Workflow
 
 - Never add `Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>` to commit messages
 - Main branch: `main`
-- Current refactor branch: `refactor/modularization`
+- Dev branch: `dev` (deploys to EC2 via deploy.yml)
+- CI runners: pinned to `ubuntu-24.04` (not `ubuntu-latest`)
 
 ## Project Memory System
 

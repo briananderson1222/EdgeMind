@@ -467,6 +467,12 @@ function handleClientRequest(ws, request) {
           type: 'claude_response',
           data: { question: request.question, answer }
         }));
+      }).catch(error => {
+        console.error('Error processing Claude question:', error.message);
+        ws.send(JSON.stringify({
+          type: 'claude_response',
+          data: { question: request.question, answer: 'Sorry, I encountered an error processing your question. Please try again.' }
+        }));
       });
       break;
 
@@ -476,11 +482,11 @@ function handleClientRequest(ws, request) {
         ws.send(JSON.stringify({ type: 'error', error: 'Missing or invalid filters array' }));
         return;
       }
-
-      // SECURITY: Validate each filter is a string and not too long
-      const validFilters = request.filters.filter(filter => {
-        return typeof filter === 'string' && filter.length > 0 && filter.length <= 200;
-      });
+      {
+        // SECURITY: Validate each filter is a string and not too long
+        const validFilters = request.filters.filter(filter => {
+          return typeof filter === 'string' && filter.length > 0 && filter.length <= 200;
+        });
 
       // Limit number of filters
       if (validFilters.length > 10) {
@@ -499,6 +505,7 @@ function handleClientRequest(ws, request) {
 
       console.log(`🔍 Anomaly filters updated: ${validFilters.length} active rules`);
       break;
+      }
   }
 }
 
@@ -813,7 +820,7 @@ app.get('/api/equipment/states', async (req, res) => {
 
       // Update summary counts
       const stateName = stateData.stateName.toLowerCase();
-      if (summary.hasOwnProperty(stateName)) {
+      if (Object.prototype.hasOwnProperty.call(summary, stateName)) {
         summary[stateName]++;
       } else {
         summary.unknown++;
@@ -959,7 +966,7 @@ app.get('/api/waste/trends', async (req, res) => {
       : '';
 
     const fluxQuery = `
-      from(bucket: "factory")
+      from(bucket: "${CONFIG.influxdb.bucket}")
         |> range(start: -24h)
         |> filter(fn: (r) => r._field == "value")
         |> filter(fn: (r) =>
@@ -1091,7 +1098,7 @@ app.get('/api/waste/by-line', async (req, res) => {
       : '';
 
     const fluxQuery = `
-      from(bucket: "factory")
+      from(bucket: "${CONFIG.influxdb.bucket}")
         |> range(start: -24h)
         |> filter(fn: (r) => r._field == "value")
         |> filter(fn: (r) =>
@@ -1573,7 +1580,7 @@ app.use('/api/demo', demoEngine.router);
 app.get('/api/waste/breakdown', async (req, res) => {
   try {
     const fluxQuery = `
-      from(bucket: "factory")
+      from(bucket: "${CONFIG.influxdb.bucket}")
         |> range(start: -24h)
         |> filter(fn: (r) => r._field == "value")
         |> filter(fn: (r) =>

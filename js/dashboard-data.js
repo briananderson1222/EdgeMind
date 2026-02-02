@@ -9,7 +9,6 @@ import {
     renderBatchOperationsError,
     updateOEEGauge
 } from './dashboard-render.js';
-import { updateCharts } from './charts.js';
 import { filterInsights } from './insights.js';
 
 /**

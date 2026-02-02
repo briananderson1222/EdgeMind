@@ -4,6 +4,8 @@ import { state } from './state.js';
 import { escapeHtml } from './utils.js';
 import { createInsightElement, applyInsightFilter } from './insights.js';
 
+const modalChartInstances = [];
+
 /**
  * Open anomaly details modal
  */
@@ -57,7 +59,7 @@ export function openAnomalyModal(anomaly) {
 
     const severity = anomaly.severity || 'medium';
     const severityUpper = severity.toUpperCase();
-    severityEl.innerHTML = '<span class="anomaly-modal-severity ' + severity + '">' + severityUpper + '</span>';
+    severityEl.innerHTML = '<span class="anomaly-modal-severity ' + escapeHtml(severity) + '">' + escapeHtml(severityUpper) + '</span>';
 
     const date = new Date(anomaly.timestamp);
     const formattedDate = date.toLocaleString('en-US', {
@@ -280,8 +282,6 @@ export function reinitChartsInModal(modalContent) {
 
         if (clonedCanvas && chartInstance) {
             try {
-                const parentContainer = clonedCanvas.parentElement;
-
                 const newCanvas = document.createElement('canvas');
                 newCanvas.id = clonedId;
                 newCanvas.style.maxHeight = '600px';
@@ -317,7 +317,8 @@ export function reinitChartsInModal(modalContent) {
                 }
 
                 const ctx = newCanvas.getContext('2d');
-                new Chart(ctx, originalConfig);
+                const modalChart = new Chart(ctx, originalConfig);
+                modalChartInstances.push(modalChart);
 
             } catch (error) {
                 console.error(`Failed to reinitialize chart ${originalId} in modal:`, error);
@@ -330,6 +331,10 @@ export function reinitChartsInModal(modalContent) {
  * Close card modal
  */
 export function closeCardModal() {
+    // Destroy modal chart instances to prevent memory leak
+    modalChartInstances.forEach(chart => chart.destroy());
+    modalChartInstances.length = 0;
+
     const overlay = document.getElementById('card-modal-overlay');
     if (overlay) {
         overlay.classList.remove('active');

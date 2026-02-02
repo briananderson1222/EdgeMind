@@ -25,6 +25,8 @@
     <link rel="stylesheet" href="css/modals.css">
     <link rel="stylesheet" href="css/chat.css">
     <link rel="stylesheet" href="css/demo.css">
+    <link rel="stylesheet" href="css/coo-views.css">
+    <link rel="stylesheet" href="css/plant-views.css">
     <link rel="stylesheet" href="css/footer.css">
     <link rel="stylesheet" href="css/responsive.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -389,63 +391,132 @@
         </div>
         </div><!-- End coo-dashboard persona-view -->
 
-        <!-- ========== PLACEHOLDER PERSONA VIEWS ========== -->
+        <!-- ========== COO PERSONA VIEWS ========== -->
         <div class="persona-view" data-view="coo-enterprise">
-            <div class="placeholder-view">
-                <div class="placeholder-view__icon">📊</div>
-                <div class="placeholder-view__title">Enterprise Comparison</div>
-                <div class="placeholder-view__subtitle">Cross-enterprise analytics view</div>
+            <div class="view-header">
+                <h2 class="view-title">Enterprise Comparison</h2>
+            </div>
+            <div id="enterprise-comparison-grid" class="enterprise-comparison-grid">
+                <div class="view-loading">Loading enterprise data...</div>
             </div>
         </div>
 
         <div class="persona-view" data-view="coo-trends">
-            <div class="placeholder-view">
-                <div class="placeholder-view__icon">📈</div>
-                <div class="placeholder-view__title">Trend Analysis</div>
-                <div class="placeholder-view__subtitle">Historical trend charts and insights</div>
+            <div class="view-header">
+                <h2 class="view-title">Trend Analysis</h2>
+            </div>
+            <div class="trends-chart-grid">
+                <div class="trend-chart-container">
+                    <h3 class="chart-title">OEE by Enterprise</h3>
+                    <canvas id="coo-oee-chart"></canvas>
+                </div>
+                <div class="trend-chart-container">
+                    <h3 class="chart-title">Waste &amp; Defect Trends</h3>
+                    <canvas id="coo-waste-chart"></canvas>
+                </div>
+                <div class="trend-chart-container">
+                    <h3 class="chart-title">Equipment State Distribution</h3>
+                    <canvas id="coo-equipment-chart"></canvas>
+                </div>
             </div>
         </div>
 
         <div class="persona-view" data-view="coo-agent">
-            <div class="placeholder-view">
-                <div class="placeholder-view__icon">💬</div>
-                <div class="placeholder-view__title">Agent Q&A</div>
-                <div class="placeholder-view__subtitle">Conversational factory intelligence</div>
+            <div class="view-header">
+                <h2 class="view-title">Agent Q&amp;A</h2>
+            </div>
+            <div class="agent-qa-container">
+                <div class="suggested-questions-grid">
+                    <button class="suggested-q-btn" onclick="askCOOQuestion('What is the current factory health?')">What is the current factory health?</button>
+                    <button class="suggested-q-btn" onclick="askCOOQuestion('Which enterprise has the lowest OEE?')">Which enterprise has the lowest OEE?</button>
+                    <button class="suggested-q-btn" onclick="askCOOQuestion('What equipment is currently faulted?')">What equipment is currently faulted?</button>
+                    <button class="suggested-q-btn" onclick="askCOOQuestion('Where is waste coming from?')">Where is waste coming from?</button>
+                    <button class="suggested-q-btn" onclick="askCOOQuestion('What are the biggest production risks?')">What are the biggest production risks?</button>
+                    <button class="suggested-q-btn" onclick="askCOOQuestion('Compare Enterprise A vs B vs C')">Compare Enterprise A vs B vs C</button>
+                </div>
+                <div class="agent-input-area">
+                    <textarea id="coo-agent-input" class="agent-textarea" placeholder="Ask a question about factory performance..." rows="3"></textarea>
+                    <button id="coo-agent-send" class="agent-send-btn" onclick="sendCOOQuestion()">Ask Agent</button>
+                </div>
+                <div id="coo-agent-response" class="agent-response">
+                    <div class="agent-response-placeholder">Ask a question to get AI-powered factory analysis</div>
+                </div>
+                <div id="coo-recent-questions" class="recent-questions"></div>
             </div>
         </div>
 
+        <!-- ========== PLANT MANAGER PERSONA VIEWS ========== -->
         <div class="persona-view" data-view="plant-line-status">
-            <div class="placeholder-view">
-                <div class="placeholder-view__icon">⚙️</div>
-                <div class="placeholder-view__title">Line Status</div>
-                <div class="placeholder-view__subtitle">Real-time production line monitoring</div>
+            <div class="view-header">
+                <h2 class="view-title">Line Status</h2>
+            </div>
+            <div id="line-status-grid" class="line-status-grid">
+                <div class="view-loading">Loading line data...</div>
             </div>
         </div>
 
         <div class="persona-view" data-view="plant-oee-drilldown">
-            <div class="placeholder-view">
-                <div class="placeholder-view__icon">🎯</div>
-                <div class="placeholder-view__title">OEE Drill-down</div>
-                <div class="placeholder-view__subtitle">Detailed OEE breakdown by line</div>
+            <div class="view-header">
+                <h2 class="view-title">OEE Drill-down</h2>
+            </div>
+            <div id="oee-drilldown-container" class="oee-drilldown-layout">
+                <div class="oee-big-display" id="oee-big-display">
+                    <div class="view-loading">Loading OEE data...</div>
+                </div>
+                <div class="oee-chart-container">
+                    <h3 class="chart-title">OEE by Line</h3>
+                    <canvas id="plant-oee-lines-chart"></canvas>
+                </div>
+                <div class="oee-chart-container">
+                    <h3 class="chart-title">Waste Breakdown</h3>
+                    <canvas id="plant-waste-chart"></canvas>
+                </div>
             </div>
         </div>
 
         <div class="persona-view" data-view="plant-equipment">
-            <div class="placeholder-view">
-                <div class="placeholder-view__icon">🔧</div>
-                <div class="placeholder-view__title">Equipment Health</div>
-                <div class="placeholder-view__subtitle">Asset condition and predictive maintenance</div>
+            <div class="view-header">
+                <h2 class="view-title">Equipment Health</h2>
+            </div>
+            <div class="equipment-summary-bar" id="equipment-summary"></div>
+            <div class="filter-btn-group">
+                <button class="filter-btn active" onclick="filterEquipmentByState('all')">All</button>
+                <button class="filter-btn" onclick="filterEquipmentByState('running')">Running</button>
+                <button class="filter-btn" onclick="filterEquipmentByState('stopped')">Stopped</button>
+                <button class="filter-btn" onclick="filterEquipmentByState('faulted')">Faulted</button>
+            </div>
+            <div id="equipment-grid" class="equipment-grid">
+                <div class="view-loading">Loading equipment data...</div>
             </div>
         </div>
 
         <div class="persona-view" data-view="plant-alerts">
-            <div class="placeholder-view">
-                <div class="placeholder-view__icon">🚨</div>
-                <div class="placeholder-view__title">Alerts & Work Orders</div>
-                <div class="placeholder-view__subtitle">Active alerts and maintenance tasks</div>
+            <div class="view-header">
+                <h2 class="view-title">Alerts &amp; Work Orders</h2>
+            </div>
+            <div class="alerts-layout">
+                <div class="alerts-section">
+                    <h3 class="section-title">Active Alerts</h3>
+                    <div class="filter-btn-group">
+                        <button class="filter-btn active" onclick="filterAlertsBySeverity('all')">All</button>
+                        <button class="filter-btn" onclick="filterAlertsBySeverity('critical')">Critical</button>
+                        <button class="filter-btn" onclick="filterAlertsBySeverity('warning')">Warning</button>
+                        <button class="filter-btn" onclick="filterAlertsBySeverity('info')">Info</button>
+                    </div>
+                    <div id="alerts-list" class="alerts-list">
+                        <div class="view-loading">Loading alerts...</div>
+                    </div>
+                </div>
+                <div class="work-orders-section">
+                    <h3 class="section-title">Work Orders</h3>
+                    <div id="work-orders-list" class="work-orders-list">
+                        <div class="view-loading">Loading work orders...</div>
+                    </div>
+                </div>
             </div>
         </div>
 
+        <!-- ========== DEMO CONTROL PERSONA VIEWS ========== -->
         <div class="persona-view" data-view="demo-scenarios">
             <div class="demo-scenarios-container">
                 <div class="demo-header">

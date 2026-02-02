@@ -507,4 +507,57 @@ capacity_provider_strategies=[
 
 ---
 
+### ADR-014: Frontend Modularization — CSS and JS Split (2026-01-31)
+
+**Context:**
+- `styles.css` grew to ~3,869 lines and `app.js` to ~3,368 lines
+- Both exceeded the 25k token limit for AI agent file reads
+- Single monolithic files made it hard to find and edit specific features
+- CSS cascade order matters — can't arbitrarily split without preserving load order
+
+**Decision:**
+- Split `styles.css` into 20 CSS files in `css/` directory, loaded via `<link>` tags in cascade order
+- Split `app.js` into 15 ES modules in `js/` directory, loaded via `<script type="module">`
+- Entry point `js/app.js` imports all modules and exposes functions to `window` for `onclick` handlers
+- Shared state via `js/state.js` using object properties (not `let` primitives) for cross-module mutability
+
+**Alternatives Considered:**
+- Build tools (Vite, Webpack) → Rejected: project goal is zero build tooling, vanilla JS
+- CSS-in-JS → Rejected: not appropriate for vanilla JS project
+- Web Components → Rejected: overkill, would require rewriting all existing code
+
+**Consequences:**
+- ✅ Each file ~150-300 lines, well within agent read limits
+- ✅ Clear separation of concerns (persona views, charts, websocket, etc.)
+- ✅ Easy to add new views without touching other files
+- ⚠️ 20+ `<link>` tags and `<script type="module">` in `index.html`
+- ⚠️ ES modules scope differently — need `window.fn = fn` for HTML onclick handlers
+- ⚠️ Must maintain CSS load order (variables first, responsive last)
+
+**Commits:** `f3ae1a2` (CSS), `9f116ba` (JS), `fe37f36` (cleanup)
+
+---
+
+### ADR-015: Persona View Init/Cleanup Pattern (2026-01-31)
+
+**Context:**
+- 7 new persona views (3 COO + 4 Plant Manager) each need initialization and teardown
+- Views have refresh intervals, chart instances, and event listeners that must be cleaned up
+- Views are shown/hidden by toggling `.active` class on `.persona-view` divs
+
+**Decision:**
+- Each view module exports `init()` and `cleanup()` functions
+- `MutationObserver` in `js/app.js` watches for `.active` class changes on `.persona-view` divs
+- When a view becomes active → call `init()` (fetch data, start intervals)
+- When a view becomes inactive → call `cleanup()` (clear intervals, destroy charts)
+- View modules are self-contained with no cross-view dependencies
+
+**Consequences:**
+- ✅ No memory leaks from orphaned intervals or chart instances
+- ✅ Views only fetch data when active (no background polling)
+- ✅ Easy to add new views — just export init/cleanup
+- ⚠️ MutationObserver adds slight complexity vs manual lifecycle management
+
+---
+
 <!-- Add new decisions above this line -->

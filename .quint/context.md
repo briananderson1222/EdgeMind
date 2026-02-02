@@ -2,15 +2,20 @@
 
 ## Vocabulary
 
-MQTT (message broker protocol), InfluxDB (time-series database), ChromaDB (vector database for RAG), OEE (Overall Equipment Effectiveness = Availability × Performance × Quality), Availability (% uptime), Agentic Loop (periodic AI analysis cycle), MCP (Model Context Protocol - tool interface for AI agents), Anomaly (deviation from expected behavior), Root Cause Analysis (identifying underlying cause of symptoms), ISA-88 (batch control standard for pharma/bioprocessing - phases, states, batch IDs), Sparkplug B (MQTT payload encoding format with JSON-wrapped values), Cleanroom Monitoring (environmental zones tracking temperature, humidity, PM2.5 particulates), Equipment Discovery (dynamic detection of equipment from hierarchy cache), Batch Operations (ISA-88 equipment states and phase progression for Enterprise C)
+- **Bug**: A defect in code causing incorrect behavior. UI/UX
+- **Bug**: Frontend issue affecting user experience (XSS, memory leak, rendering, accessibility). Backend
+- **Bug**: Server-side issue (race condition, unhandled promise, data loss, resource leak). Bug-Finding
+- **System**: A comprehensive approach to systematically discover, track, and fix bugs across the full stack.
+- **Regression**: A bug introduced by fixing another bug. Test
+- **Coverage**: Percentage of code paths exercised by automated tests.
 
 ## Invariants
 
-1. Agent insights must be actionable (identify root cause, not just symptoms).
-2. Analysis must complete within agentic loop interval (30s).
-3. Data queries must not overload InfluxDB or ChromaDB.
-4. Insights must reference specific equipment/measurements, not just enterprise-level aggregates.
-5. Solution must work with existing MQTT topic structure (Enterprise/Site/Area/Machine/Component/Metric).
-6. Enterprise C uses ISA-88 batch control, NOT OEE metrics - use get_batch_status tool.
-7. Cleanroom environmental thresholds: temperature 18-25°C, humidity 40-60%, PM2.5 <5 good / 5-10 warning / >10 critical.
-8. Insights panel must filter anomalies and insights by selected enterprise filter.
+1. Bug fixes must not introduce regressions.
+2. Security vulnerabilities (XSS, injection) take highest priority.
+3. Memory leaks degrade production over time and must be addressed.
+4. The system has zero test coverage currently.
+5. No linting or static analysis exists.
+6. Production is deployed via GitHub Actions to ECS Fargate (backend) and S3/CloudFront (frontend).
+7. The project is JavaScript/Node.js (no TypeScript).
+8. Conference demo deadline exists (ProveIt! 2026).

@@ -26,7 +26,7 @@ export async function initDemoScenarios() {
             clearInterval(demoState.scenarioStatusInterval);
         }
         demoState.scenarioStatusInterval = setInterval(updateScenarioStatus, 2000);
-        updateScenarioStatus();
+        updateScenarioStatus().catch(err => console.warn('Scenario status update failed:', err.message));
 
     } catch (error) {
         console.error('Failed to load scenarios:', error);

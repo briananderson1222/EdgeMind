@@ -5,8 +5,8 @@ on:
     branches: [main]
     paths:
       - 'index.html'
-      - 'styles.css'
-      - 'app.js'
+      - 'css/**'
+      - 'js/**'
       - 'assets/**'
   workflow_dispatch:
 
@@ -22,7 +22,7 @@ env:
 jobs:
   deploy:
     name: Deploy to S3 + CloudFront
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -39,8 +39,8 @@ jobs:
           aws s3 sync ./ s3://${{ env.S3_BUCKET }}/ \
             --exclude '*' \
             --include 'index.html' \
-            --include 'styles.css' \
-            --include 'app.js' \
+            --include 'css/*' \
+            --include 'js/*' \
             --include 'assets/*' \
             --delete
 

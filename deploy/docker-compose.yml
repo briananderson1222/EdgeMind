@@ -57,6 +57,12 @@ services:
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-factory}
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=${CHROMA_PORT:-8000}
+      - CMMS_ENABLED=${CMMS_ENABLED:-false}
+      - CMMS_PROVIDER=${CMMS_PROVIDER:-maintainx}
+      - MAINTAINX_API_KEY=${MAINTAINX_API_KEY:-}
+      - MAINTAINX_BASE_URL=${MAINTAINX_BASE_URL:-https://api.getmaintainx.com/v1}
+      - MAINTAINX_DEFAULT_LOCATION_ID=${MAINTAINX_DEFAULT_LOCATION_ID:-}
+      - MAINTAINX_DEFAULT_ASSIGNEE_ID=${MAINTAINX_DEFAULT_ASSIGNEE_ID:-}
     depends_on:
       chromadb:
         condition: service_healthy

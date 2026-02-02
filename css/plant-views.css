@@ -1,0 +1,685 @@
+/* ========== PLANT MANAGER PERSONA VIEWS ========== */
+
+/* === Line Status View === */
+
+.line-status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+    padding: 20px;
+}
+
+.line-status-card {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.line-status-card:hover {
+    border-color: var(--persona-color);
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.15);
+    transform: translateY(-2px);
+}
+
+.line-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.line-card-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #eee;
+}
+
+.line-card-enterprise {
+    font-size: 0.75rem;
+    color: #888;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.line-oee-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.line-oee-value .oee-unit {
+    font-size: 1rem;
+    font-weight: 400;
+    opacity: 0.6;
+}
+
+.line-oee-label {
+    font-size: 0.75rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 16px;
+}
+
+/* Equipment counts */
+.line-equipment-counts {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.equip-count {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 6px;
+}
+
+.equip-running {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.15);
+}
+
+.equip-stopped {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.15);
+}
+
+.equip-faulted {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+}
+
+/* A/P/Q breakdown bars */
+.line-apq-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.apq-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.apq-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #aaa;
+    width: 14px;
+    text-align: center;
+}
+
+.apq-bar-track {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.apq-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.apq-availability {
+    background: #3b82f6;
+}
+
+.apq-performance {
+    background: #8b5cf6;
+}
+
+.apq-quality {
+    background: #10b981;
+}
+
+.apq-value {
+    font-size: 0.7rem;
+    color: #999;
+    width: 32px;
+    text-align: right;
+}
+
+/* === OEE Drill-down View === */
+
+.oee-drilldown-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 20px;
+    padding: 20px;
+}
+
+.oee-big-display {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 32px 20px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+}
+
+.oee-big-value {
+    font-size: 4rem;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.oee-big-value .oee-big-unit {
+    font-size: 1.5rem;
+    font-weight: 400;
+    opacity: 0.6;
+}
+
+.oee-big-label {
+    font-size: 0.85rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 24px;
+}
+
+.oee-apq-display {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    max-width: 600px;
+    margin: 0 auto 16px;
+}
+
+.oee-apq-item {
+    flex: 1;
+}
+
+.oee-apq-bar-track {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.oee-apq-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.oee-apq-detail {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.oee-apq-label {
+    font-size: 0.75rem;
+    color: #999;
+}
+
+.oee-apq-value {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #ccc;
+}
+
+.oee-formula {
+    font-size: 0.8rem;
+    color: #666;
+    font-family: 'Courier New', monospace;
+}
+
+.oee-chart-container {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    padding: 20px;
+    min-height: 300px;
+    position: relative;
+}
+
+.oee-chart-container canvas {
+    max-height: 350px;
+}
+
+/* === Equipment Health View === */
+
+.equipment-summary-bar {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    padding: 16px 20px;
+    margin: 0 20px 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+}
+
+.equipment-stat {
+    text-align: center;
+}
+
+.equipment-stat-icon {
+    font-size: 0.7rem;
+    margin-bottom: 2px;
+}
+
+.equipment-stat-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #eee;
+    line-height: 1;
+}
+
+.equipment-stat-label {
+    font-size: 0.75rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+}
+
+.equipment-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    padding: 0 20px 20px;
+}
+
+.equipment-card {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    padding: 16px;
+    transition: all 0.3s ease;
+}
+
+.equipment-card:hover {
+    border-color: var(--persona-color);
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
+}
+
+.equipment-state-faulted {
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.equipment-state-faulted:hover {
+    border-color: #ef4444;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+}
+
+.equipment-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.equipment-card-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #eee;
+}
+
+.state-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.state-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+}
+
+.state-running {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.15);
+}
+
+.state-running .state-dot {
+    background: #10b981;
+    box-shadow: 0 0 6px #10b981;
+}
+
+.state-stopped {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.15);
+}
+
+.state-stopped .state-dot {
+    background: #f59e0b;
+}
+
+.state-faulted {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+}
+
+.state-faulted .state-dot {
+    background: #ef4444;
+    box-shadow: 0 0 6px #ef4444;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.equipment-card-meta {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.equipment-card-site,
+.equipment-card-enterprise {
+    font-size: 0.75rem;
+    color: #777;
+}
+
+.equipment-card-reason {
+    font-size: 0.8rem;
+    color: #f59e0b;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.equipment-card-duration {
+    font-size: 0.75rem;
+    color: #666;
+    margin-top: 4px;
+}
+
+/* === Filter Button Group === */
+
+.filter-btn-group {
+    display: flex;
+    gap: 8px;
+    padding: 8px 20px;
+}
+
+.filter-btn {
+    padding: 6px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.3);
+    color: #999;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.filter-btn:hover {
+    border-color: var(--persona-color);
+    color: #ccc;
+}
+
+.filter-btn.active {
+    background: rgba(0, 255, 136, 0.15);
+    border-color: var(--persona-color);
+    color: var(--persona-color);
+}
+
+/* === Alerts & Work Orders View === */
+
+.alerts-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    padding: 0 20px 20px;
+}
+
+.alerts-section,
+.work-orders-section {
+    min-height: 200px;
+}
+
+.section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #ccc;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.alerts-list,
+.work-orders-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.alert-card {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    padding: 14px;
+    transition: all 0.3s ease;
+}
+
+.alert-card:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.alert-critical {
+    border-left: 3px solid #ef4444;
+}
+
+.alert-warning {
+    border-left: 3px solid #f59e0b;
+}
+
+.alert-info {
+    border-left: 3px solid #3b82f6;
+}
+
+.alert-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.severity-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.severity-critical {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+}
+
+.severity-warning {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.15);
+}
+
+.severity-info {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.alert-time {
+    font-size: 0.75rem;
+    color: #666;
+}
+
+.alert-description {
+    font-size: 0.85rem;
+    color: #ccc;
+    line-height: 1.4;
+}
+
+.alert-enterprise {
+    display: inline-block;
+    font-size: 0.7rem;
+    color: #777;
+    margin-top: 6px;
+}
+
+/* Work order cards */
+.work-order-card {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    padding: 14px;
+    transition: all 0.3s ease;
+}
+
+.work-order-card:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.work-order-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.work-order-title {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #ddd;
+    line-height: 1.3;
+}
+
+.wo-status-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.wo-status-open {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.15);
+}
+
+.wo-status-in-progress {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.wo-status-completed {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.15);
+}
+
+.work-order-meta {
+    display: flex;
+    gap: 16px;
+    font-size: 0.75rem;
+    color: #777;
+}
+
+/* CMMS disconnected state */
+.cmms-disconnected {
+    text-align: center;
+    padding: 40px 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+}
+
+.cmms-disconnected-icon {
+    font-size: 2rem;
+    color: #f59e0b;
+    margin-bottom: 12px;
+}
+
+.cmms-disconnected-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #ccc;
+    margin-bottom: 6px;
+}
+
+.cmms-disconnected-text {
+    font-size: 0.8rem;
+    color: #777;
+    line-height: 1.4;
+}
+
+/* === Chart Titles (shared) === */
+
+.chart-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #ccc;
+    margin-bottom: 12px;
+}
+
+/* === Responsive === */
+
+@media (max-width: 768px) {
+    .line-status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .oee-drilldown-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .oee-big-value {
+        font-size: 3rem;
+    }
+
+    .oee-apq-display {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .equipment-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .equipment-summary-bar {
+        gap: 16px;
+    }
+
+    .alerts-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .filter-btn-group {
+        flex-wrap: wrap;
+    }
+}

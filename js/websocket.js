@@ -9,6 +9,20 @@ import { topicToMeasurement, getEnterpriseParam } from './utils.js';
 import { fetchActiveSensorCount } from './dashboard-data.js';
 
 /**
+ * Schedule a reconnection attempt with exponential backoff
+ */
+function scheduleReconnect() {
+    if (!connection.reconnectAttempts) connection.reconnectAttempts = 0;
+    const backoff = Math.min(5000 * Math.pow(1.5, connection.reconnectAttempts), 30000);
+    connection.reconnectAttempts++;
+    console.log(`🔄 Reconnecting in ${Math.round(backoff / 1000)}s (attempt ${connection.reconnectAttempts})...`);
+    connection.reconnectTimeout = setTimeout(() => {
+        connection.reconnectTimeout = null;
+        connectWebSocket();
+    }, backoff);
+}
+
+/**
  * Connect to WebSocket backend
  */
 export function connectWebSocket() {
@@ -30,11 +44,12 @@ export function connectWebSocket() {
     connection.ws.onopen = () => {
         console.log('✅ Connected to backend!');
         connection.isConnected = true;
+        connection.reconnectAttempts = 0;
         updateConnectionStatus(true);
 
-        if (connection.reconnectInterval) {
-            clearInterval(connection.reconnectInterval);
-            connection.reconnectInterval = null;
+        if (connection.reconnectTimeout) {
+            clearTimeout(connection.reconnectTimeout);
+            connection.reconnectTimeout = null;
         }
 
         // Update system status
@@ -73,12 +88,9 @@ export function connectWebSocket() {
             if (statusText) statusText.textContent = 'RECONNECTING...';
         }
 
-        // Attempt to reconnect
-        if (!connection.reconnectInterval) {
-            connection.reconnectInterval = setInterval(() => {
-                console.log('🔄 Attempting to reconnect...');
-                connectWebSocket();
-            }, 5000);
+        // Attempt to reconnect with exponential backoff
+        if (!connection.reconnectTimeout) {
+            scheduleReconnect();
         }
     };
 }
@@ -90,7 +102,7 @@ export function handleServerMessage(message) {
     console.log('📨 Received:', message.type);
 
     switch (message.type) {
-        case 'initial_state':
+        case 'initial_state': {
             // Initial data when connecting
             let messages = message.data.recentMessages || [];
 
@@ -151,8 +163,9 @@ export function handleServerMessage(message) {
             // Fetch persistent measurement count from server schema cache
             fetchActiveSensorCount();
             break;
+        }
 
-        case 'mqtt_message':
+        case 'mqtt_message': {
             // Real-time MQTT message
             const topic = message.data.topic || '';
 
@@ -185,6 +198,7 @@ export function handleServerMessage(message) {
             addMQTTMessageToStream(message.data);
             updateMetrics();
             break;
+        }
 
         case 'claude_insight':
         case 'trend_insight':
