@@ -282,8 +282,6 @@ export function reinitChartsInModal(modalContent) {
 
         if (clonedCanvas && chartInstance) {
             try {
-                const parentContainer = clonedCanvas.parentElement;
-
                 const newCanvas = document.createElement('canvas');
                 newCanvas.id = clonedId;
                 newCanvas.style.maxHeight = '600px';

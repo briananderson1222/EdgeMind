@@ -1,7 +1,7 @@
 // MAIN ENTRY POINT - Imports all modules and exposes functions to window
 
 // Import all modules
-import { state, connection } from './state.js';
+import { state } from './state.js';
 import { switchPersona, switchPersonaView, initPersonaNavigation } from './persona.js';
 import { connectWebSocket } from './websocket.js';
 import { initializeCharts } from './charts.js';
@@ -14,10 +14,9 @@ import {
     fetchFactoryStatus,
     fetchEquipmentStates,
     fetchLineOEE,
-    refreshAllData,
     selectFactory
 } from './dashboard-data.js';
-import { updateMetrics, updateMessageRate } from './dashboard-render.js';
+import { updateMessageRate } from './dashboard-render.js';
 import {
     filterInsights,
     addAnomalyFilter,

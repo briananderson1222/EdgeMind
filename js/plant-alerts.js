@@ -7,15 +7,7 @@ let refreshInterval = null;
 let currentSeverityFilter = 'all';
 let cmmsConnected = false;
 
-/**
- * Get severity color
- */
-function getSeverityColor(severity) {
-    const s = (severity || '').toLowerCase();
-    if (s === 'critical' || s === 'high') return '#ef4444';
-    if (s === 'warning' || s === 'medium') return '#f59e0b';
-    return '#3b82f6'; // info / low
-}
+
 
 /**
  * Classify severity from anomaly data

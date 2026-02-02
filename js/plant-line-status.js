@@ -52,7 +52,6 @@ function countEquipmentForSite(equipmentStates, enterprise, site) {
  */
 function renderLineCard(line, equipCounts) {
     const oee = line.oee ?? 0;
-    const oeeColor = getOeeColor(oee);
     const oeeClass = getOeeClass(oee);
     const availability = line.availability ?? 0;
     const performance = line.performance ?? 0;

@@ -14,7 +14,7 @@ function formatResponse(text) {
         // Bold text
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         // Bullet points (lines starting with - or *)
-        .replace(/^[\-\*]\s+(.+)$/gm, '<li>$1</li>')
+        .replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>')
         // Wrap consecutive <li> in <ul>
         .replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
         // Numbered lists
