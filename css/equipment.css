@@ -1,0 +1,136 @@
+        /* Equipment State Monitor */
+        .equipment-state-panel {
+            grid-column: span 6;
+            height: 450px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .state-summary {
+            display: flex;
+            gap: 20px;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+        }
+
+        .state-count {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .state-count span {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 900;
+        }
+
+        .state-count.running span {
+            color: var(--accent-green);
+        }
+
+        .state-count.idle span {
+            color: var(--accent-amber);
+        }
+
+        .state-count.down span {
+            color: var(--accent-red);
+        }
+
+        .state-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            flex: 1;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .state-grid::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .state-grid::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .state-grid::-webkit-scrollbar-thumb {
+            background: var(--accent-cyan);
+            border-radius: 4px;
+        }
+
+        .equipment-card {
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .equipment-card.running {
+            border-color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .equipment-card.idle {
+            border-color: var(--accent-amber);
+            background: rgba(255, 191, 0, 0.05);
+        }
+
+        .equipment-card.down {
+            border-color: var(--accent-red);
+            background: rgba(255, 51, 102, 0.05);
+            animation: equipmentPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes equipmentPulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 10px rgba(255, 51, 102, 0.5); }
+            50% { opacity: 0.85; box-shadow: 0 0 20px rgba(255, 51, 102, 0.8); }
+        }
+
+        .equipment-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 255, 255, 0.3);
+        }
+
+        .equipment-name {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 5px;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .equipment-state {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .equipment-card.running .equipment-state {
+            color: var(--accent-green);
+        }
+
+        .equipment-card.idle .equipment-state {
+            color: var(--accent-amber);
+        }
+
+        .equipment-card.down .equipment-state {
+            color: var(--accent-red);
+        }
+

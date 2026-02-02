@@ -1,0 +1,136 @@
+.live-stream {
+    grid-column: span 6;
+    height: 450px;
+    display: flex;
+    flex-direction: column;
+}
+
+.stream-container {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 4px;
+    padding: 15px;
+    flex: 1;
+    max-height: 350px;
+    overflow-y: auto;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.stream-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.stream-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.stream-container::-webkit-scrollbar-thumb {
+    background: var(--accent-cyan);
+    border-radius: 4px;
+}
+
+.stream-line {
+    margin-bottom: 8px;
+    animation: streamEntry 0.3s ease-out;
+}
+
+.stream-timestamp {
+    color: var(--accent-amber);
+}
+
+.stream-topic {
+    color: var(--accent-magenta);
+}
+
+.stream-value {
+    color: var(--accent-cyan);
+}
+
+.event-filter-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.event-tab {
+    padding: 8px 16px;
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.event-tab:hover {
+    background: rgba(0, 255, 255, 0.2);
+    border-color: var(--accent-cyan);
+}
+
+.event-tab.active {
+    background: rgba(0, 255, 255, 0.3);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+}
+
+.event-tab.pause-btn {
+    margin-left: auto;
+    background: rgba(255, 165, 0, 0.1);
+    border-color: rgba(255, 165, 0, 0.3);
+    color: var(--accent-amber);
+}
+
+.event-tab.pause-btn:hover {
+    background: rgba(255, 165, 0, 0.2);
+    border-color: var(--accent-amber);
+}
+
+.event-tab.pause-btn.paused {
+    background: rgba(255, 0, 0, 0.2);
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+}
+
+.event-tab.pause-btn.paused:hover {
+    background: rgba(255, 0, 0, 0.3);
+}
+
+.stream-container.paused {
+    border: 2px solid var(--accent-red);
+    animation: pausedPulse 2s ease-in-out infinite;
+    position: relative;
+}
+
+.stream-container.paused::before {
+    content: 'PAUSED';
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--accent-red);
+    color: #0a0e27;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 0.8rem;
+    z-index: 10;
+    animation: pausedBadgePulse 2s ease-in-out infinite;
+}
+
+.pause-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    background: rgba(255, 0, 0, 0.2);
+    border: 1px solid var(--accent-red);
+    border-radius: 4px;
+    color: var(--accent-red);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    margin-bottom: 10px;
+}

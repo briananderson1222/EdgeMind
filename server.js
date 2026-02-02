@@ -9,6 +9,7 @@ const aiModule = require('./lib/ai');
 const vectorStore = require('./lib/vector');
 const { isSparkplugTopic, decodePayload, extractMetrics } = require('./lib/sparkplug/decoder');
 const { createAgentCoreClient } = require('./lib/agentcore');
+const demoEngine = require('./lib/demo/engine');
 
 // Foundation modules
 const CONFIG = require('./lib/config');
@@ -93,18 +94,32 @@ const TREND_ANALYSIS_INTERVAL = 30000; // Analyze trends every 30 seconds
 // Connect to MQTT broker
 console.log('🏭 Connecting to ProveIt! Virtual Factory...');
 const mqttClient = mqtt.connect(CONFIG.mqtt.host, {
+  clientId: `edgemind-${require('os').hostname()}-${process.pid}`,
   username: CONFIG.mqtt.username,
   password: CONFIG.mqtt.password,
-  reconnectPeriod: 5000
+  reconnectPeriod: 5000,
+  clean: false
 });
+
+// Guard flag to prevent duplicate initialization on reconnect
+let initialized = false;
 
 mqttClient.on('connect', async () => {
   console.log('✅ Connected to MQTT broker!');
+
+  // Always re-subscribe on reconnect
   CONFIG.mqtt.topics.forEach(topic => {
     mqttClient.subscribe(topic, (err) => {
       if (!err) console.log(`📡 Subscribed to: ${topic}`);
     });
   });
+
+  // Only initialize once
+  if (initialized) {
+    console.log('♻️ Reconnected — skipping initialization');
+    return;
+  }
+  initialized = true;
 
   // Warm up schema cache and populate knownMeasurements (Phase 4)
   try {
@@ -137,6 +152,9 @@ mqttClient.on('connect', async () => {
 
   // Start the agentic trend analysis loop
   aiModule.startAgenticLoop();
+
+  // Initialize demo engine with MQTT client
+  demoEngine.init({ mqttClient });
 });
 
 mqttClient.on('error', (error) => {
@@ -152,15 +170,28 @@ mqttClient.on('message', async (topic, message) => {
   factoryState.stats.messageCount++;
   factoryState.stats.lastUpdate = timestamp;
 
+  // DEMO DATA NAMESPACE INTERCEPT
+  // Check if this is demo-injected data (namespace at position [1] after enterprise)
+  let isInjected = false;
+  let actualTopic = topic;
+  const DEMO_NS = CONFIG.demo?.namespace || 'concept-reply';
+  const topicParts = topic.split('/');
+  if (topicParts.length > 2 && topicParts[1] === DEMO_NS) {
+    isInjected = true;
+    topicParts.splice(1, 1);
+    actualTopic = topicParts.join('/');
+    console.log(`[DEMO] Intercepted demo data: ${topic} -> ${actualTopic}`);
+  }
+
   // SPARKPLUG B PROTOCOL HANDLING
   // Check if this is a Sparkplug B message (topic starts with spBv1.0/)
-  if (isSparkplugTopic(topic)) {
+  if (isSparkplugTopic(actualTopic)) {
     try {
       // Decode the Sparkplug protobuf payload
       const decodedPayload = decodePayload(message);
 
       // Extract normalized metrics from the payload
-      const metrics = extractMetrics(topic, decodedPayload);
+      const metrics = extractMetrics(actualTopic, decodedPayload);
 
       // Write each metric to InfluxDB
       for (const metric of metrics) {
@@ -187,10 +218,11 @@ mqttClient.on('message', async (topic, message) => {
           type: 'mqtt_message',
           data: {
             timestamp,
-            topic,
+            topic: actualTopic,
             payload: `[Sparkplug B] ${metrics.length} metrics: ${displayMetrics}${metrics.length > 5 ? '...' : ''}`,
             id: `msg_${Date.now()}_${Math.random()}`,
-            protocol: 'sparkplug_b'
+            protocol: 'sparkplug_b',
+            isInjected
           }
         });
       }
@@ -210,13 +242,14 @@ mqttClient.on('message', async (topic, message) => {
 
   const mqttMessage = {
     timestamp,
-    topic,
+    topic: actualTopic,
     payload,
-    id: `msg_${Date.now()}_${Math.random()}`
+    id: `msg_${Date.now()}_${Math.random()}`,
+    isInjected
   };
 
   // Phase 4: Detect new measurements
-  const measurement = extractMeasurementFromTopic(topic);
+  const measurement = extractMeasurementFromTopic(actualTopic);
   if (measurement && !schemaCache.knownMeasurements.has(measurement)) {
     schemaCache.knownMeasurements.add(measurement);
 
@@ -228,7 +261,7 @@ mqttClient.on('message', async (topic, message) => {
       type: 'new_measurement',
       data: {
         measurement,
-        topic,
+        topic: actualTopic,
         firstSeen: timestamp,
         sampleValue: payload.substring(0, 100),
         valueType: isNumeric ? 'numeric' : 'string',
@@ -236,17 +269,18 @@ mqttClient.on('message', async (topic, message) => {
           measurement,
           isNumeric ? 'numeric' : 'string',
           isNumeric ? [sampleValue] : []
-        )
+        ),
+        isInjected
       }
     });
 
-    console.log(`[SCHEMA] New measurement detected: ${measurement} from topic: ${topic}`);
+    console.log(`[SCHEMA] New measurement detected: ${measurement} from topic: ${actualTopic}`);
   }
 
   // Detect and cache equipment state changes
-  const topicLower = topic.toLowerCase();
+  const topicLower = actualTopic.toLowerCase();
   if (topicLower.includes('statecurrent') || (topicLower.includes('state') && !topicLower.includes('statereason'))) {
-    const parts = topic.split('/');
+    const parts = actualTopic.split('/');
     if (parts.length >= 3) {
       const enterprise = parts[0];
       const site = parts[1];
@@ -345,7 +379,8 @@ mqttClient.on('message', async (topic, message) => {
 
   // Write to InfluxDB
   try {
-    const point = parseTopicToInflux(topic, payload);
+    const options = isInjected ? { source: 'demo-injected' } : {};
+    const point = parseTopicToInflux(actualTopic, payload, options);
     writeApi.writePoint(point);
     factoryState.stats.influxWrites++;
   } catch (err) {
@@ -570,7 +605,13 @@ app.get('/api/oee/breakdown', async (req, res) => {
 // NEW: Factory status endpoint with hierarchical enterprise/site OEE
 app.get('/api/factory/status', async (req, res) => {
   try {
-    const status = await queryFactoryStatus();
+    // SECURITY: Validate enterprise parameter
+    const enterprise = validateEnterprise(req.query.enterprise);
+    if (enterprise === null) {
+      return res.status(400).json({ error: 'Invalid enterprise parameter' });
+    }
+
+    const status = await queryFactoryStatus(enterprise);
     res.json(status);
   } catch (error) {
     console.error('Factory status query error:', error);
@@ -1513,6 +1554,13 @@ app.get('/api/agent/health', async (req, res) => {
     });
   }
 });
+
+// =============================================================================
+// DEMO ENGINE ENDPOINTS
+// =============================================================================
+
+// Mount demo engine routes
+app.use('/api/demo', demoEngine.router);
 
 // =============================================================================
 // STUB ENDPOINTS FOR LAMBDA TOOL COMPATIBILITY

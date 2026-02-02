@@ -50,14 +50,9 @@ cdk deploy --all --profile reply
 - **ECR Image**: `718815871498.dkr.ecr.us-east-1.amazonaws.com/edgemind-prod-backend:latest`
 
 #### Local Development: Frontend Live Reload (PR #9)
-`docker-compose.local.yml` now mounts frontend files for hot reload without rebuild:
-```yaml
-volumes:
-  - ../index.html:/app/index.html:ro
-  - ../styles.css:/app/styles.css:ro
-  - ../app.js:/app/app.js:ro
-```
-Edit frontend files locally, refresh browser - no container restart needed.
+`docker-compose.local.yml` mounts frontend files for hot reload without rebuild.
+Note: Frontend was modularized — `styles.css` → `css/` directory, `app.js` → `js/` directory.
+Dockerfile now uses `COPY css/ ./css/` and `COPY js/ ./js/`.
 
 ### InfluxDB
 - **Local Port**: `8086`
@@ -107,6 +102,26 @@ healthcheck:
 - **Port**: `1883`
 - **Full URL (for secrets)**: `mqtt://virtualfactory.proveit.services:1883` *(include protocol + port!)*
 - **Topic Pattern**: `Enterprise {A|B|C}/Site{N}/area/machine/component/metric/type`
+- **Read-only Username**: `proveitreadonly` (default in config.js)
+- **Write Username**: `conceptreply` (set via `MQTT_USERNAME` env var)
+- **Secrets Manager Key**: `edgemind/mqtt` (contains host, username, password as JSON)
+
+#### Hackathon Publish Convention (IMPORTANT)
+Participant namespace goes at position [1] after enterprise:
+```
+Enterprise B/concept-reply/Site1/area/machine/component/metric/type
+```
+- Position [0] = Enterprise (standard topic structure)
+- Position [1] = Participant namespace (`concept-reply`, `maintainx`, etc.)
+- Position [2+] = Standard topic hierarchy
+- Server strips namespace before processing: `topicParts.splice(1, 1)`
+- Config: `CONFIG.demo.namespace = 'concept-reply'`
+
+#### MQTT Client Requirements
+- **Stable clientId**: `edgemind-${hostname}-${pid}` — prevents reconnect storms
+- **`clean: false`**: Preserves session across reconnects
+- **QoS 1**: Required for demo publishes (QoS 0 silently drops on reconnect)
+- **Connect handler guard**: Must use `initialized` flag to prevent duplicate initialization on reconnect
 
 ⚠️ **MQTT_HOST Secret Format**: Must include `mqtt://` protocol prefix AND port number. Without these, the MQTT client will fail with "Missing protocol" error.
 
@@ -172,7 +187,7 @@ if (oee === null && availability && performance && quality) {
 ## Git Workflow
 
 - **Main Branch**: `main`
-- **Current Refactor Branch**: `refactor/modularization`
+- **Current Feature Branch**: `feature/persona-navbar`
 - **Commit Convention**: No `Co-Authored-By` lines
 
 ---
@@ -182,7 +197,7 @@ if (oee === null && availability && performance && quality) {
 ### Required
 - `INFLUXDB_ADMIN_PASSWORD` - InfluxDB admin password
 - `INFLUXDB_ADMIN_TOKEN` - InfluxDB API token
-- `MQTT_USERNAME` - MQTT broker username
+- `MQTT_USERNAME` - MQTT broker username (use `conceptreply` for write access)
 - `MQTT_PASSWORD` - MQTT broker password
 
 ### Optional

@@ -1,0 +1,54 @@
+
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            margin-top: 60px;
+            border-top: 2px solid rgba(227, 25, 55, 0.3);
+            box-shadow: 0 -2px 20px rgba(227, 25, 55, 0.2);
+            position: relative;
+        }
+
+        .footer-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .powered-by {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .reply-footer-logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 900;
+            letter-spacing: 8px;
+            color: var(--reply-red);
+            text-shadow: 0 0 15px rgba(227, 25, 55, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .reply-footer-logo:hover {
+            text-shadow: var(--glow-reply);
+            transform: scale(1.05);
+        }
+
+        .footer-tagline {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            font-style: italic;
+            margin-top: 5px;
+        }
+
+        .footer-divider {
+            width: 200px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--reply-red), transparent);
+            margin: 10px 0;
+        }

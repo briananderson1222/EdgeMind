@@ -1,0 +1,184 @@
+@keyframes gridScroll {
+    0% { transform: translate(0, 0); }
+    100% { transform: translate(50px, 50px); }
+}
+
+@keyframes scanline {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(100%); }
+}
+
+@keyframes titleGlow {
+    0% { filter: brightness(1); }
+    100% { filter: brightness(1.3); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6); }
+}
+
+@keyframes replyGlow {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+}
+
+@keyframes btn-spinner {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes numberFlicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.95; }
+}
+
+@keyframes streamEntry {
+    from {
+        opacity: 0;
+        transform: translateX(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes avatarPulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.5); }
+    50% { box-shadow: 0 0 40px rgba(255, 0, 255, 0.8); }
+}
+
+@keyframes chipEntry {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes pausedPulse {
+    0%, 100% { border-color: var(--accent-red); }
+    50% { border-color: rgba(255, 51, 102, 0.3); }
+}
+
+@keyframes pausedBadgePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+@keyframes alertBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes equipmentPulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 10px rgba(255, 51, 102, 0.5); }
+    50% { opacity: 0.85; box-shadow: 0 0 20px rgba(255, 51, 102, 0.8); }
+}
+
+@keyframes criticalPulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(255, 51, 102, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(255, 51, 102, 0.6); }
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+@keyframes livePulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 20px rgba(255, 0, 0, 0.5); }
+    50% { opacity: 0.6; box-shadow: 0 0 40px rgba(255, 0, 0, 0.8); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-30px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideInChat {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes messageFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse-cyan {
+    0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 255, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(0, 255, 255, 0.5); }
+}
+
+@keyframes pulse-green {
+    0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(0, 255, 136, 0.5); }
+}
+
+@keyframes pulse-amber {
+    0%, 100% { box-shadow: 0 0 20px rgba(255, 191, 0, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(255, 191, 0, 0.5); }
+}
+
+@keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 8px rgba(0, 255, 136, 0.6); }
+    50% { box-shadow: 0 0 16px rgba(0, 255, 136, 0.9); }
+}
+
+@keyframes timerFlash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes glowPulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+}
+
+@keyframes progressPulse {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 1; }
+}
+
+@keyframes timerWarningFlash {
+    0%, 100% { background-color: rgba(255, 191, 0, 0.2); }
+    50% { background-color: rgba(255, 191, 0, 0.4); }
+}

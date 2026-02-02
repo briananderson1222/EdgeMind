@@ -1,0 +1,72 @@
+        .connection-status {
+            grid-column: span 12;
+            display: flex;
+            gap: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+
+        .connection-item {
+            flex: 1;
+            min-width: 200px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .connection-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            box-shadow: 0 0 15px var(--accent-green);
+            animation: blink 2s ease-in-out infinite;
+        }
+
+        .connection-indicator.disconnected {
+            background: var(--accent-red);
+            box-shadow: 0 0 15px var(--accent-red);
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .connection-info {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .connection-label {
+            color: var(--text-dim);
+            display: block;
+        }
+
+        .connection-value {
+            color: var(--accent-cyan);
+            font-weight: 700;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 30px 0;
+            margin-top: 40px;
+            border-top: 1px solid rgba(0, 255, 255, 0.2);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        .footer-logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            margin-bottom: 10px;
+        }
+
+        /* LIVE Badge */

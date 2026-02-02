@@ -1,0 +1,80 @@
+        .quality-panel {
+            grid-column: span 6;
+        }
+
+        .quality-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .quality-card {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid;
+            border-radius: 8px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .quality-card.good {
+            border-color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.1);
+        }
+
+        .quality-card.warning {
+            border-color: var(--accent-amber);
+            background: rgba(255, 191, 0, 0.1);
+        }
+
+        .quality-card.critical {
+            border-color: var(--accent-red);
+            background: rgba(255, 51, 102, 0.1);
+            animation: criticalPulse 1s ease-in-out infinite;
+        }
+
+        @keyframes criticalPulse {
+            0%, 100% { box-shadow: 0 0 10px rgba(255, 51, 102, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(255, 51, 102, 0.6); }
+        }
+
+        .quality-enterprise {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .quality-rate {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .quality-card.good .quality-rate { color: var(--accent-green); }
+        .quality-card.warning .quality-rate { color: var(--accent-amber); }
+        .quality-card.critical .quality-rate { color: var(--accent-red); }
+
+        .quality-trend {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .quality-trend.rising { color: var(--accent-red); }
+        .quality-trend.stable { color: var(--accent-amber); }
+        .quality-trend.falling { color: var(--accent-green); }
+
+        .quality-total {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 8px;
+        }
+

@@ -1,0 +1,113 @@
+.metrics {
+    grid-column: span 3;
+}
+
+.metric-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: var(--accent-cyan);
+    margin: 15px 0 5px 0;
+    text-shadow: var(--glow-cyan);
+    animation: numberFlicker 0.1s infinite;
+}
+
+.metric-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.metric-change {
+    font-size: 0.9rem;
+    margin-top: 8px;
+}
+
+.metric-change.positive {
+    color: var(--accent-green);
+}
+
+.metric-change.negative {
+    color: var(--accent-red);
+}
+
+.factory-overview {
+    grid-column: span 12;
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.05), rgba(255, 0, 255, 0.05));
+}
+
+.factory-selector {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.factory-btn {
+    flex: 1;
+    min-width: 200px;
+    padding: 20px;
+    background: rgba(0, 255, 255, 0.05);
+    border: 2px solid var(--accent-cyan);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    position: relative;
+}
+
+.factory-btn:hover {
+    background: rgba(0, 255, 255, 0.15);
+    box-shadow: var(--glow-cyan);
+    transform: scale(1.05);
+}
+
+.factory-btn.active {
+    background: rgba(0, 255, 255, 0.2);
+    border-color: var(--accent-magenta);
+    box-shadow: var(--glow-magenta);
+}
+
+.factory-status {
+    font-size: 0.8rem;
+    color: var(--accent-green);
+    margin-top: 8px;
+    font-family: 'Share Tech Mono', monospace;
+}
+
+.factory-btn.loading {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.factory-btn.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 15px;
+    width: 16px;
+    height: 16px;
+    margin-top: -8px;
+    border: 2px solid rgba(0, 255, 255, 0.3);
+    border-top-color: var(--accent-cyan);
+    border-radius: 50%;
+    animation: btn-spinner 0.8s linear infinite;
+}
+
+.factory-selector.loading .factory-btn:not(.active) {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.stats-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}

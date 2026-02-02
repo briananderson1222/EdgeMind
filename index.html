@@ -6,22 +6,113 @@
     <title>EdgeMind - LIVE</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="css/variables.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/animations.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/command-bar.css">
+    <link rel="stylesheet" href="css/cards.css">
+    <link rel="stylesheet" href="css/metrics.css">
+    <link rel="stylesheet" href="css/stream.css">
+    <link rel="stylesheet" href="css/ai-agent.css">
+    <link rel="stylesheet" href="css/scorecard.css">
+    <link rel="stylesheet" href="css/line-oee.css">
+    <link rel="stylesheet" href="css/equipment.css">
+    <link rel="stylesheet" href="css/batch.css">
+    <link rel="stylesheet" href="css/quality.css">
+    <link rel="stylesheet" href="css/charts.css">
+    <link rel="stylesheet" href="css/connection.css">
+    <link rel="stylesheet" href="css/modals.css">
+    <link rel="stylesheet" href="css/chat.css">
+    <link rel="stylesheet" href="css/demo.css">
+    <link rel="stylesheet" href="css/footer.css">
+    <link rel="stylesheet" href="css/responsive.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
-    <div class="live-badge" id="live-badge">● DISCONNECTED</div>
+<body data-theme="coo">
+    <!-- ========== COMMAND BAR ========== -->
+    <div class="command-bar">
+        <div class="command-bar__left">
+            <div class="logo">REPLY</div>
+            <div class="divider"></div>
+            <div class="title">EDGE MIND</div>
+        </div>
 
-    <div class="container">
-        <header>
-            <div class="reply-logo">REPLY</div>
-            <h1>EDGE MIND</h1>
-            <div class="subtitle">Command Center - LIVE DATA</div>
-            <div class="status-badge" id="system-status">● CONNECTING...</div>
-            <button class="settings-btn" onclick="openSettingsModal()">⚙ Settings</button>
-        </header>
+        <div class="command-bar__center">
+            <button class="persona-chip active" data-persona="coo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="4" y="4" width="16" height="16" rx="1"/>
+                    <line x1="8" y1="8" x2="8" y2="10"/>
+                    <line x1="12" y1="8" x2="12" y2="10"/>
+                    <line x1="16" y1="8" x2="16" y2="10"/>
+                    <line x1="8" y1="13" x2="8" y2="15"/>
+                    <line x1="12" y1="13" x2="12" y2="15"/>
+                    <line x1="16" y1="13" x2="16" y2="15"/>
+                </svg>
+                <span>COO</span>
+                <span class="persona-chip__shortcut">1</span>
+            </button>
 
-        <div class="dashboard-grid">
+            <button class="persona-chip" data-persona="plant">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                </svg>
+                <span>Plant Mgr</span>
+                <span class="persona-chip__shortcut">2</span>
+            </button>
+
+            <button class="persona-chip" data-persona="demo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+                </svg>
+                <span>Demo Ctrl</span>
+                <span class="persona-chip__shortcut">3</span>
+            </button>
+        </div>
+
+        <div class="command-bar__right">
+            <div class="status" id="system-status">
+                <div class="status__dot"></div>
+                <span>CONNECTING...</span>
+            </div>
+            <svg class="settings-icon" onclick="openSettingsModal()" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- ========== SUB-NAV BAR ========== -->
+    <div class="sub-nav">
+        <!-- COO Panel -->
+        <div class="sub-nav__panel active" data-panel="coo">
+            <button class="sub-nav__item active" data-view="coo-dashboard">Dashboard</button>
+            <button class="sub-nav__item" data-view="coo-enterprise">Enterprise Comparison</button>
+            <button class="sub-nav__item" data-view="coo-trends">Trend Analysis</button>
+            <button class="sub-nav__item" data-view="coo-agent">Agent Q&A</button>
+        </div>
+
+        <!-- Plant Manager Panel -->
+        <div class="sub-nav__panel" data-panel="plant">
+            <button class="sub-nav__item active" data-view="plant-line-status">Line Status</button>
+            <button class="sub-nav__item" data-view="plant-oee-drilldown">OEE Drill-down</button>
+            <button class="sub-nav__item" data-view="plant-equipment">Equipment Health</button>
+            <button class="sub-nav__item" data-view="plant-alerts">Alerts & Work Orders</button>
+        </div>
+
+        <!-- Demo Control Panel -->
+        <div class="sub-nav__panel" data-panel="demo">
+            <button class="sub-nav__item active" data-view="demo-scenarios">Scenario Selector</button>
+            <button class="sub-nav__item" data-view="demo-inject">Inject Anomaly</button>
+            <button class="sub-nav__item" data-view="demo-reset">Reset Data</button>
+        </div>
+    </div>
+
+    <div class="content">
+        <!-- Existing Dashboard wrapped in persona-view -->
+        <div class="persona-view active" data-view="coo-dashboard">
+            <div class="dashboard-grid">
             <!-- Factory Selection -->
             <div class="card factory-overview" id="factory-overview">
                 <div class="card-title">
@@ -296,14 +387,251 @@
                 </div>
             </div>
         </div>
+        </div><!-- End coo-dashboard persona-view -->
 
-        <footer>
-            <div class="footer-logo">PROVEIT! CONFERENCE 2026</div>
-            <div>Powered by Claude AI • Real-time Factory Insights</div>
-        </footer>
-    </div>
+        <!-- ========== PLACEHOLDER PERSONA VIEWS ========== -->
+        <div class="persona-view" data-view="coo-enterprise">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">📊</div>
+                <div class="placeholder-view__title">Enterprise Comparison</div>
+                <div class="placeholder-view__subtitle">Cross-enterprise analytics view</div>
+            </div>
+        </div>
 
-    <script src="app.js"></script>
+        <div class="persona-view" data-view="coo-trends">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">📈</div>
+                <div class="placeholder-view__title">Trend Analysis</div>
+                <div class="placeholder-view__subtitle">Historical trend charts and insights</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="coo-agent">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">💬</div>
+                <div class="placeholder-view__title">Agent Q&A</div>
+                <div class="placeholder-view__subtitle">Conversational factory intelligence</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="plant-line-status">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">⚙️</div>
+                <div class="placeholder-view__title">Line Status</div>
+                <div class="placeholder-view__subtitle">Real-time production line monitoring</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="plant-oee-drilldown">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">🎯</div>
+                <div class="placeholder-view__title">OEE Drill-down</div>
+                <div class="placeholder-view__subtitle">Detailed OEE breakdown by line</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="plant-equipment">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">🔧</div>
+                <div class="placeholder-view__title">Equipment Health</div>
+                <div class="placeholder-view__subtitle">Asset condition and predictive maintenance</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="plant-alerts">
+            <div class="placeholder-view">
+                <div class="placeholder-view__icon">🚨</div>
+                <div class="placeholder-view__title">Alerts & Work Orders</div>
+                <div class="placeholder-view__subtitle">Active alerts and maintenance tasks</div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="demo-scenarios">
+            <div class="demo-scenarios-container">
+                <div class="demo-header">
+                    <h2 class="demo-title">Scenario Selector</h2>
+                    <p class="demo-subtitle">Pre-configured demo scenarios for ProveIt! Conference 2026</p>
+                </div>
+                <div class="scenario-grid" id="scenario-grid">
+                    <!-- Scenarios loaded dynamically -->
+                    <div class="scenario-loading">Loading scenarios...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="demo-inject">
+            <div class="demo-inject-container">
+                <div class="demo-header">
+                    <h2 class="demo-title">Inject Anomaly</h2>
+                    <p class="demo-subtitle">Manual anomaly injection for live demonstrations</p>
+                </div>
+
+                <div class="inject-panel card">
+                    <div class="card-title">Injection Controls</div>
+                    <div class="inject-form">
+                        <div class="inject-field">
+                            <label class="inject-label">Equipment</label>
+                            <select id="inject-equipment" class="inject-input inject-select">
+                                <option value="" disabled selected>Select equipment...</option>
+                            </select>
+                        </div>
+
+                        <div class="inject-field">
+                            <label class="inject-label">Anomaly Type</label>
+                            <div class="inject-radio-group" id="inject-anomaly-types">
+                                <!-- Populated dynamically from /api/demo/profiles -->
+                            </div>
+                        </div>
+
+                        <div class="inject-field">
+                            <label class="inject-label">Severity</label>
+                            <div class="severity-slider-container">
+                                <input type="range"
+                                       id="inject-severity"
+                                       class="severity-slider"
+                                       min="1" max="3" step="1" value="2">
+                                <div class="severity-labels">
+                                    <span>Mild</span>
+                                    <span>Moderate</span>
+                                    <span>Severe</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="inject-field">
+                            <label class="inject-label">Duration (seconds)</label>
+                            <div class="duration-slider-container">
+                                <input type="range"
+                                       id="inject-duration"
+                                       class="duration-slider"
+                                       min="30" max="300" step="30" value="120">
+                                <div class="duration-value"><span id="inject-duration-value">120</span>s</div>
+                            </div>
+                        </div>
+
+                        <button class="inject-btn" id="inject-start-btn">
+                            INJECT ANOMALY
+                        </button>
+
+                        <div class="inject-status">
+                            <span class="inject-status-label">Max Concurrent:</span>
+                            <span id="inject-concurrent-count">0</span> / <span id="inject-concurrent-max">3</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="active-injections-panel card">
+                    <div class="card-title">Active Injections</div>
+                    <div id="active-injections-list">
+                        <div class="no-injections">No active injections</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="persona-view" data-view="demo-reset">
+            <div class="demo-reset-container">
+                <div class="demo-header">
+                    <h2 class="demo-title">Reset & Timer</h2>
+                    <p class="demo-subtitle">Data reset controls and presentation timer</p>
+                </div>
+
+                <div class="reset-panel card">
+                    <div class="card-title">Reset Controls</div>
+                    <div class="reset-options">
+                        <div class="reset-option">
+                            <div class="reset-option-header">
+                                <div class="reset-option-title">Reset Injected Data</div>
+                                <button class="reset-btn reset-btn-primary" onclick="demoResetData('injected-data')">
+                                    RESET INJECTIONS
+                                </button>
+                            </div>
+                            <div class="reset-option-desc">
+                                Clears demo-injected InfluxDB data points only. Stops all active injections. Factory baseline data remains intact.
+                            </div>
+                        </div>
+
+                        <div class="reset-option">
+                            <div class="reset-option-header">
+                                <div class="reset-option-title">Reset All Scenarios</div>
+                                <button class="reset-btn reset-btn-warning" onclick="demoResetData('all-scenarios')">
+                                    RESET SCENARIOS
+                                </button>
+                            </div>
+                            <div class="reset-option-desc">
+                                Stops all running scenarios and clears scenario-generated data. Use this between different scenario demos.
+                            </div>
+                        </div>
+
+                        <div class="reset-option">
+                            <div class="reset-option-header">
+                                <div class="reset-option-title">Full Reset</div>
+                                <button class="reset-btn reset-btn-danger" onclick="demoResetData('full')">
+                                    FULL RESET
+                                </button>
+                            </div>
+                            <div class="reset-option-desc">
+                                Nuclear option. Stops all scenarios and injections, clears all demo data. Use this for a clean slate between presentations.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="timer-panel card">
+                    <div class="card-title">Presentation Timer</div>
+                    <div class="timer-display">
+                        <div class="timer-value" id="timer-display">00:00</div>
+                        <div class="timer-status" id="timer-status">Ready</div>
+                    </div>
+
+                    <div class="timer-presets">
+                        <button class="timer-preset-btn" onclick="setTimerPreset(300)">5 min</button>
+                        <button class="timer-preset-btn" onclick="setTimerPreset(600)">10 min</button>
+                        <button class="timer-preset-btn" onclick="setTimerPreset(900)">15 min</button>
+                        <button class="timer-preset-btn" onclick="setTimerPreset(1200)">20 min</button>
+                        <input type="number"
+                               id="timer-custom-input"
+                               class="timer-custom-input"
+                               placeholder="Custom (min)"
+                               min="1" max="120">
+                        <button class="timer-preset-btn" onclick="setTimerCustom()">Set</button>
+                    </div>
+
+                    <div class="timer-controls">
+                        <button class="timer-control-btn timer-start" id="timer-start-btn" onclick="startTimer()">
+                            START
+                        </button>
+                        <button class="timer-control-btn timer-pause" id="timer-pause-btn" onclick="pauseTimer()" disabled>
+                            PAUSE
+                        </button>
+                        <button class="timer-control-btn timer-reset" id="timer-reset-btn" onclick="resetTimer()">
+                            RESET
+                        </button>
+                    </div>
+
+                    <div class="timer-options">
+                        <label class="timer-option-checkbox">
+                            <input type="checkbox" id="timer-audio-enabled">
+                            <span>Audio alert at 0:00</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- End .content -->
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="powered-by">Powered by</div>
+            <div class="reply-footer-logo">REPLY</div>
+            <div class="footer-divider"></div>
+            <div class="footer-tagline">Driving Digital Transformation</div>
+        </div>
+    </footer>
+
+    <script type="module" src="js/app.js"></script>
 
     <!-- Agent Modal Overlay -->
     <div class="agent-modal-overlay" id="agent-modal-overlay">
@@ -433,14 +761,5 @@
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer>
-        <div class="footer-content">
-            <div class="powered-by">Powered by</div>
-            <div class="reply-footer-logo">REPLY</div>
-            <div class="footer-divider"></div>
-            <div class="footer-tagline">Driving Digital Transformation</div>
-        </div>
-    </footer>
 </body>
 </html>

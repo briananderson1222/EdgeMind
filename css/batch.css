@@ -1,0 +1,292 @@
+        .batch-summary {
+            display: flex;
+            gap: 15px;
+            justify-content: space-around;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+        }
+
+        .summary-item {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .summary-item.running {
+            color: var(--accent-green);
+        }
+
+        .summary-item.idle {
+            color: var(--accent-amber);
+        }
+
+        .summary-item.complete {
+            color: var(--accent-cyan);
+        }
+
+        .summary-item.fault {
+            color: var(--accent-magenta);
+        }
+
+        .batch-card {
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .batch-card.running {
+            border-color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .batch-card.idle {
+            border-color: var(--accent-amber);
+            background: rgba(255, 191, 0, 0.05);
+        }
+
+        .batch-card.complete {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 255, 255, 0.05);
+        }
+
+        .batch-card.fault, .batch-card.stopped {
+            border-color: var(--accent-magenta);
+            background: rgba(255, 0, 255, 0.05);
+        }
+
+        .batch-card.unknown {
+            border-color: var(--text-dim);
+            background: rgba(107, 114, 128, 0.05);
+        }
+
+        .batch-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 255, 255, 0.3);
+        }
+
+        .batch-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+        }
+
+        .equipment-name {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .equipment-state {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.5);
+            text-transform: uppercase;
+        }
+
+        .batch-details {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+        }
+
+        .batch-phase, .batch-id, .batch-recipe {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .batch-phase::before {
+            content: '▶';
+            color: var(--accent-cyan);
+            font-size: 0.6rem;
+        }
+
+        .batch-id::before {
+            content: '🔖';
+            font-size: 0.75rem;
+        }
+
+        .batch-recipe::before {
+            content: '📋';
+            font-size: 0.75rem;
+        }
+
+        /* Batch Equipment Grid - wider cards for long equipment names */
+        .batch-equipment-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+        }
+
+        /* When batch cards are present, container uses flex layout */
+        .line-oee-grid:has(.batch-equipment-grid) {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        /* Equipment name - allow wrapping for long names */
+        .batch-card .equipment-name {
+            white-space: normal;
+            word-wrap: break-word;
+            line-height: 1.3;
+            overflow: visible;
+            text-overflow: clip;
+        }
+
+        /* Cleanroom Environmental Zones */
+        .cleanroom-section {
+            width: 100%;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(0, 255, 255, 0.2);
+        }
+
+        .cleanroom-header {
+            margin-bottom: 12px;
+        }
+
+        .cleanroom-header h4 {
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            margin: 0 0 8px 0;
+        }
+
+        .cleanroom-summary {
+            display: flex;
+            gap: 20px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            flex-wrap: wrap;
+        }
+
+        .cleanroom-summary span {
+            white-space: nowrap;
+        }
+
+        .pm25-status {
+            font-weight: 600;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .pm25-status.good {
+            color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.1);
+        }
+
+        .pm25-status.warning {
+            color: var(--accent-amber);
+            background: rgba(255, 191, 0, 0.1);
+        }
+
+        .pm25-status.critical {
+            color: var(--accent-red);
+            background: rgba(255, 0, 110, 0.1);
+        }
+
+        .zones-issues {
+            color: var(--accent-amber);
+            font-weight: 600;
+        }
+
+        .cleanroom-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .cleanroom-card {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 12px;
+            border-left: 3px solid var(--accent-cyan);
+            transition: all 0.3s ease;
+        }
+
+        .cleanroom-card.good {
+            border-left-color: var(--accent-green);
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .cleanroom-card.warning {
+            border-left-color: var(--accent-amber);
+            background: rgba(255, 191, 0, 0.05);
+        }
+
+        .cleanroom-card.critical {
+            border-left-color: var(--accent-red);
+            background: rgba(255, 0, 110, 0.05);
+        }
+
+        .cleanroom-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 255, 255, 0.2);
+        }
+
+        .zone-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .zone-metrics {
+            display: flex;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        }
+
+        .zone-metrics .metric {
+            white-space: nowrap;
+        }
+
+        .zone-metrics .metric.pm25 {
+            color: var(--accent-cyan);
+        }
+
+        .zone-status {
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .zone-status.good {
+            color: var(--accent-green);
+        }
+
+        .zone-status.warning {
+            color: var(--accent-amber);
+        }
+
+        .zone-status.critical {
+            color: var(--accent-red);
+        }
+

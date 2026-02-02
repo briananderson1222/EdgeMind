@@ -1,0 +1,46 @@
+        @media (max-width: 1200px) {
+            .metrics, .chart-panel, .live-stream, .ai-agent, .alerts-panel, .equipment-state-panel, .line-oee-panel, .health-scorecard, .quality-panel {
+                grid-column: span 6;
+            }
+
+            .quality-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+                letter-spacing: 4px;
+            }
+
+            .metrics, .chart-panel, .live-stream, .ai-agent, .alerts-panel, .equipment-state-panel, .line-oee-panel, .health-scorecard, .quality-panel {
+                grid-column: span 12;
+            }
+
+            .factory-btn {
+                min-width: 100%;
+            }
+
+            .state-summary {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .state-grid {
+                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            }
+
+            .line-oee-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+
+            .quality-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .quality-rate {
+                font-size: 1.5rem;
+            }
+        }
+

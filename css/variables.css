@@ -1,0 +1,30 @@
+:root {
+    --bg-dark: #0a0e1a;
+    --bg-card: #141824;
+    --accent-cyan: #00ffff;
+    --accent-magenta: #ff00ff;
+    --accent-amber: #ffbf00;
+    --accent-green: #00ff88;
+    --accent-red: #ff3366;
+    --reply-red: #E31937;
+    --text-primary: #e8e8e8;
+    --text-dim: #6b7280;
+    --glow-cyan: 0 0 20px rgba(0, 255, 255, 0.5);
+    --glow-magenta: 0 0 20px rgba(255, 0, 255, 0.5);
+    --glow-reply: 0 0 20px rgba(227, 25, 55, 0.5);
+}
+
+[data-theme="coo"] {
+    --persona-color: #00ffff;
+    --persona-color-rgb: 0, 255, 255;
+}
+
+[data-theme="plant"] {
+    --persona-color: #00ff88;
+    --persona-color-rgb: 0, 255, 136;
+}
+
+[data-theme="demo"] {
+    --persona-color: #ffbf00;
+    --persona-color-rgb: 255, 191, 0;
+}
