@@ -6,15 +6,6 @@ import { state } from './state.js';
 let refreshInterval = null;
 
 /**
- * Get OEE color based on value
- */
-function getOeeColor(value) {
-    if (value >= 85) return '#10b981';
-    if (value >= 70) return '#f59e0b';
-    return '#ef4444';
-}
-
-/**
  * Get OEE color class based on value
  */
 function getOeeClass(value) {

@@ -1,9 +1,9 @@
 // server.js - Factory Intelligence Backend with InfluxDB + Agentic Claude
 const mqtt = require('mqtt');
-const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { BedrockRuntimeClient } = require('@aws-sdk/client-bedrock-runtime');
 const WebSocket = require('ws');
 const express = require('express');
-const { influxDB, writeApi, queryApi, Point, parseTopicToInflux, writeSparkplugMetric } = require('./lib/influx/client');
+const { writeApi, queryApi, parseTopicToInflux, writeSparkplugMetric } = require('./lib/influx/client');
 const { createCmmsProvider } = require('./lib/cmms-interface');
 const aiModule = require('./lib/ai');
 const vectorStore = require('./lib/vector');
@@ -20,20 +20,17 @@ const {
   validateEnterprise,
   validateSite,
   extractMeasurementFromTopic,
-  VALID_ENTERPRISES,
   VALID_WS_MESSAGE_TYPES,
   MAX_INPUT_LENGTH
 } = require('./lib/validation');
 const {
   MEASUREMENT_CLASSIFICATIONS,
   ENTERPRISE_DOMAIN_CONTEXT,
-  classifyMeasurement,
   getEnterpriseContext
 } = require('./lib/domain-context');
 const { refreshSchemaCache, refreshHierarchyCache, classifyMeasurementDetailed } = require('./lib/schema');
 const {
   OEE_TIERS,
-  OEE_PATTERNS,
   oeeConfig,
   discoverOEESchema,
   calculateOEEv2,
@@ -41,7 +38,7 @@ const {
   queryOEEBreakdown,
   queryFactoryStatus
 } = require('./lib/oee');
-const { getEquipmentMetadata, EQUIPMENT_ALIASES, resolveEquipmentId } = require('./lib/equipment');
+const { getEquipmentMetadata, resolveEquipmentId } = require('./lib/equipment');
 
 // Initialize services
 const app = express();
@@ -88,7 +85,6 @@ app.use(express.static(__dirname));
 // InfluxDB client, writeApi, and queryApi are now imported from './lib/influx/client'
 
 // Agentic loop state
-let lastTrendAnalysis = Date.now();
 const TREND_ANALYSIS_INTERVAL = 30000; // Analyze trends every 30 seconds
 
 // Connect to MQTT broker
@@ -797,7 +793,7 @@ app.get('/api/equipment/states', async (req, res) => {
     const summary = { running: 0, idle: 0, down: 0, unknown: 0 };
 
     // Convert Map to array with calculated durations
-    for (const [key, stateData] of equipmentStateCache.states.entries()) {
+    for (const stateData of equipmentStateCache.states.values()) {
       // Filter by enterprise if specified
       if (enterprise && enterprise !== 'ALL' && stateData.enterprise !== enterprise) {
         continue;
@@ -1311,7 +1307,7 @@ app.get('/api/agent/context', async (req, res) => {
   const getEquipmentStates = () => {
     const states = [];
     const now = Date.now();
-    for (const [key, stateData] of equipmentStateCache.states.entries()) {
+    for (const stateData of equipmentStateCache.states.values()) {
       states.push({
         ...stateData,
         durationMs: now - new Date(stateData.firstSeen).getTime(),
@@ -1810,14 +1806,13 @@ app.get('/api/batch/status', async (req, res) => {
 
           const zone = cleanroomData.get(o.machine);
           const parsedValue = parseJsonValue(o._value);
-          const measurement = o._measurement.toLowerCase();
 
           // Extract FC## prefix and metric type
           // Measurements follow pattern: FC##_Metric_Name or FC##_Air_Quality__PM2_5_
           const fcMatch = o._measurement.match(/FC(\d+)_(.*)/i);
           if (!fcMatch) return;
 
-          const [, fcNumber, metricType] = fcMatch;
+          const [, , metricType] = fcMatch;
           const metricLower = metricType.toLowerCase();
 
           // Categorize metrics (with null guards to prevent NaN)
