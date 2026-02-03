@@ -145,10 +145,32 @@ Enterprise B/concept-reply/Site1/area/machine/component/metric/type
 ## Key Configuration Values
 
 ### Timing
-- **Trend Analysis Interval**: 30,000ms (30 seconds)
+- **Tier 1 Delta Check**: 120,000ms (2 minutes) — env: `AGENT_CHECK_INTERVAL_MS`
+- **Tier 3 Summary Interval**: 900,000ms (15 minutes) — env: `AGENT_SUMMARY_INTERVAL_MS`
+- **Change Threshold**: 5% — env: `AGENT_CHANGE_THRESHOLD_PCT`
+- **Anomaly Cache TTL**: 30 minutes (dedup window for work orders)
 - **WebSocket Throttle**: Every 10th MQTT message
 - **Schema Cache TTL**: 5 minutes
 - **Trend Query Window**: 5 minutes (1-min aggregates)
+
+### Agent Analysis Tiers (ADR-016)
+The agent loop uses a three-tier architecture to minimize cost while maximizing insight quality:
+
+| Tier | Purpose | Interval | AI Call? | Tool Budget |
+|------|---------|----------|----------|-------------|
+| **Tier 1** | Delta detection | 2 min | No | 0 |
+| **Tier 2** | Targeted analysis | On-demand | Yes | 3 |
+| **Tier 3** | Comprehensive summary | 15 min | Yes | 9 |
+
+**Tier 1** queries InfluxDB and compares OEE/Availability/Performance/Quality per enterprise against a previous snapshot. Only triggers Tier 2 when a metric changes by ≥5%.
+
+**Tier 2** sends Claude a focused prompt with the specific changes to investigate. Uses 3 tool calls max.
+
+**Tier 3** cycles enterprise focus: Enterprise A → Enterprise B → Enterprise C → Cross-enterprise comparison.
+
+**Anomaly Dedup**: `Map<string, {timestamp, count}>` with 30-min TTL prevents duplicate work orders.
+
+**Expected Cost**: ~6 Bedrock calls/hour during stable operation (vs 120 previously).
 
 ### OEE Tiers
 - **Tier 1**: Direct OEE measurement (highest confidence)
@@ -229,8 +251,8 @@ const cleanPath = path.startsWith('/') ? path.slice(1) : path;
 
 - **Framework**: Jest
 - **Run**: `npm test`
-- **Test Suites**: 5 (validation, influx writer, OEE calculation x2, CMMS MaintainX)
-- **Total Tests**: 179
+- **Test Suites**: 6 (validation, influx writer, OEE calculation x2, CMMS MaintainX, change detection)
+- **Total Tests**: 190
 
 ---
 
@@ -256,6 +278,9 @@ const cleanPath = path.startsWith('/') ? path.slice(1) : path;
 - `AWS_REGION` - AWS region for Bedrock (default: us-east-1)
 - `AWS_PROFILE` - AWS profile for credentials
 - `DISABLE_INSIGHTS` - Set to 'true' to disable AI analysis loop
+- `AGENT_CHECK_INTERVAL_MS` - Tier 1 delta check interval (default: 120000 = 2 min)
+- `AGENT_SUMMARY_INTERVAL_MS` - Tier 3 summary interval (default: 900000 = 15 min)
+- `AGENT_CHANGE_THRESHOLD_PCT` - % change to trigger Tier 2 analysis (default: 5)
 - `CHROMA_HOST` - ChromaDB hostname (default: localhost, use 'chromadb' in Docker)
 - `CHROMA_PORT` - ChromaDB port (default: 8000)
 

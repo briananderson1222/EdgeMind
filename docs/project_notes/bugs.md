@@ -373,4 +373,14 @@ This file tracks bugs encountered and their solutions for future reference.
 - **Prevention**: Only send API fields confirmed in official documentation. The MaintainX API accepts: `title`, `description`, `priority` for work order creation.
 - **Commit**: `86a328b`
 
+### 2026-02-03 - Agent Loop Excessive Noise and Cost (~120 Bedrock Calls/Hour)
+- **Issue**: AI agent analyzed the factory every 30 seconds, generating ~120 Bedrock API calls/hour with near-identical insights. Operators experienced alert fatigue from repetitive insights and duplicate work orders.
+- **Root Cause**: The 30-second interval was too aggressive. Factory metrics rarely change meaningfully in 30-second windows, so most AI calls were wasted — producing the same insight repeatedly. No deduplication existed for work order creation.
+- **Solution**: Implemented tiered agent analysis architecture (ADR-016):
+  - Tier 1: Cheap local delta detection every 2 min (no AI call if nothing changed)
+  - Tier 2: Targeted AI analysis only when Tier 1 detects ≥5% metric change
+  - Tier 3: Scheduled comprehensive summary every 15 min with enterprise rotation
+  - Added anomaly dedup cache (30-min TTL) to prevent duplicate work orders
+- **Prevention**: When designing polling loops, always add a cheap "has anything changed?" gate before expensive operations. Use configurable intervals via env vars so operators can tune without code changes.
+
 <!-- Add new bugs above this line -->

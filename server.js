@@ -84,8 +84,9 @@ app.use(express.static(__dirname));
 
 // InfluxDB client, writeApi, and queryApi are now imported from './lib/influx/client'
 
-// Agentic loop state
-const TREND_ANALYSIS_INTERVAL = 30000; // Analyze trends every 30 seconds
+// Agentic loop state — intervals now configured via env vars in lib/state.js (ADR-016)
+// Tier 1: AGENT_CHECK_INTERVAL_MS (default 120000 = 2 min)
+// Tier 3: AGENT_SUMMARY_INTERVAL_MS (default 900000 = 15 min)
 
 // Connect to MQTT broker
 console.log('🏭 Connecting to ProveIt! Virtual Factory...');
@@ -2039,7 +2040,8 @@ const server = app.listen(PORT, () => {
     console.log(`🤖 AI Insights: DISABLED (MQTT data collection only)`);
   } else {
     console.log(`🤖 AWS Bedrock: ${CONFIG.bedrock.region} / ${CONFIG.bedrock.modelId}`);
-    console.log(`🤖 AI Insights: ENABLED (trend analysis every ${TREND_ANALYSIS_INTERVAL / 1000}s)`);
+    const { analysisConfig } = require('./lib/state').factoryState;
+    console.log(`🤖 AI Insights: ENABLED (Tier 1: ${analysisConfig.checkIntervalMs / 1000}s, Tier 3: ${analysisConfig.summaryIntervalMs / 1000}s)`);
   }
 });
 
