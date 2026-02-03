@@ -2,7 +2,7 @@
         /* AI Agent */
         .ai-agent {
             grid-column: span 6;
-            height: 450px;
+            min-height: 450px;
             display: flex;
             flex-direction: column;
         }
@@ -10,7 +10,7 @@
         #claude-insights-container {
             flex: 1;
             overflow-y: auto;
-            max-height: 280px;
+            min-height: 0;
         }
 
         .agent-header {
@@ -317,4 +317,44 @@
             font-size: 0.75rem;
             color: var(--text-dim);
             margin-top: 5px;
+        }
+
+        /* Agent Pause/Resume Button */
+        .agent-pause-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+            padding: 4px 12px;
+            background: rgba(0, 255, 65, 0.1);
+            border: 1px solid rgba(0, 255, 65, 0.4);
+            border-radius: 4px;
+            color: var(--accent-green);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .agent-pause-btn:hover {
+            background: rgba(0, 255, 65, 0.2);
+            border-color: var(--accent-green);
+        }
+
+        .agent-pause-btn.paused {
+            background: rgba(255, 50, 50, 0.15);
+            border-color: rgba(255, 50, 50, 0.5);
+            color: var(--accent-red, #ff3232);
+        }
+
+        .agent-pause-btn.paused:hover {
+            background: rgba(255, 50, 50, 0.25);
+            border-color: var(--accent-red, #ff3232);
+        }
+
+        /* Override expand-btn margin for ai-agent card */
+        .ai-agent .card-title .expand-btn {
+            margin-left: 8px;
         }
