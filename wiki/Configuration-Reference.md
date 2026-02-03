@@ -83,14 +83,6 @@ Claude AI integration for trend analysis. See [[Module-AI]] for implementation d
 
 The embedding model is used by [[Module-Vector]] for generating semantic embeddings of anomalies.
 
-### Alternative: Direct Anthropic API
-
-If not using AWS Bedrock:
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | No | (empty) | Direct Anthropic API key |
-
 ## ChromaDB Configuration
 
 Vector database for anomaly persistence and semantic search. See [[Module-Vector]] for implementation details.

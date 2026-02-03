@@ -10,7 +10,7 @@ Before you begin, ensure you have:
 
 - **Node.js 18+** - [Download](https://nodejs.org/)
 - **Docker** - [Download](https://www.docker.com/products/docker-desktop/)
-- **AWS credentials** - For Claude AI on Bedrock (or Anthropic API key for direct access)
+- **AWS credentials** - For Claude AI on Bedrock (IAM role, environment variables, or AWS config)
 
 Verify your setup:
 
@@ -51,14 +51,14 @@ Expected output: `"status":"pass"`
 Create a `.env` file in the project root:
 
 ```bash
-# Required: Your Anthropic API key
-ANTHROPIC_API_KEY=your_api_key_here
+# Required: AWS region for Bedrock AI
+AWS_REGION=us-east-1
 
 # Optional: Server port (default: 3000)
 PORT=3000
 ```
 
-Get your API key from: https://console.anthropic.com/
+AI uses AWS Bedrock (not Anthropic API directly). No `ANTHROPIC_API_KEY` needed. Ensure your AWS credentials are configured via `aws configure` or environment variables.
 
 ---
 
@@ -187,8 +187,8 @@ curl -H "Authorization: Token proveit-factory-token-2026" \
 
 ### Claude not responding
 
-1. Verify `ANTHROPIC_API_KEY` is set correctly in `.env`
-2. Check API key has sufficient credits
+1. Verify AWS credentials are configured (`aws sts get-caller-identity`)
+2. Check that the IAM role/user has Bedrock access
 3. Look for error messages in server console
 
 ---

@@ -6,7 +6,7 @@ This guide helps presenters demonstrate EdgeMind at the ProveIt! 2026 Conference
 
 ### Pre-Flight Checklist
 
-1. Verify the dashboard is loading: http://<YOUR_EC2_IP>:3000
+1. Verify the dashboard is loading: https://edge-mind.concept-reply-sandbox.com
 2. Confirm the "LIVE" badge is green (MQTT connected)
 3. Check that data is streaming in the MQTT panel
 4. Verify Claude insights are appearing (bottom panel)
@@ -134,19 +134,19 @@ Alternative questions to ask:
 
 ### Dashboard shows "Disconnected"
 
-1. Check EC2 instance is running
-2. Verify port 3000 is accessible
+1. Check ECS service is running (CloudWatch logs or AWS console)
+2. Verify https://edge-mind.concept-reply-sandbox.com/health returns OK
 3. Hard refresh the browser (Ctrl+Shift+R)
 
 ### No MQTT data streaming
 
-1. Check health endpoint: `curl http://<YOUR_EC2_IP>:3000/health`
+1. Check health endpoint: `curl https://edge-mind.concept-reply-sandbox.com/health`
 2. Verify MQTT connection status in response
 3. May need to restart the container
 
 ### Claude insights not appearing
 
-1. Check that ANTHROPIC_API_KEY is set on the server
+1. Check that AWS credentials are configured on the server (Bedrock access)
 2. Look at server logs for API errors
 3. Manually trigger an insight via console
 

@@ -16,7 +16,7 @@ flowchart TB
     subgraph edgemind[EdgeMind System]
         subgraph backend[Backend - server.js]
             HTTP[HTTP Server<br/>Express.js<br/>Port 3000]
-            WS[WebSocket Server<br/>ws library<br/>Port 8080]
+            WS[WebSocket Server<br/>ws library<br/>Port 3000 /ws]
             MQTT_H[MQTT Handler<br/>mqtt.js]
             AGENT[Agentic Loop<br/>30-second cycle]
         end
@@ -66,7 +66,7 @@ Single Node.js process handling all backend responsibilities:
 
 **Ports:**
 - HTTP: 3000
-- WebSocket: 8080 (separate port)
+- WebSocket: 3000 (same port, path `/ws`)
 
 ### Frontend (Dashboard)
 
@@ -108,7 +108,7 @@ AI service for trend analysis:
 |     Container     |
 +-------------------+
 | HTTP  :3000  <----|----- Browser requests (REST API, static files)
-| WS    :8080  <----|----- Browser WebSocket connection
+| WS    :3000/ws <--|----- Browser WebSocket connection
 | MQTT  :1883  -----|----- Outbound to broker (subscriber)
 | Influx:8086  -----|----- Outbound to InfluxDB
 +-------------------+
@@ -118,25 +118,26 @@ AI service for trend analysis:
 
 ```mermaid
 flowchart LR
-    subgraph EC2[AWS EC2 Instance]
-        subgraph docker[Docker Container]
+    subgraph fargate[AWS ECS Fargate]
+        subgraph task[ECS Task]
             SERVER[server.js]
         end
-        BIND[Bind Mounts:<br/>server.js<br/>index.html]
+        ECR[ECR Image:<br/>edgemind-prod-backend]
     end
 
     subgraph local[Local Development]
         DEV[npm run dev]
     end
 
-    EC2 --> |Port 3000| USERS[Users]
+    fargate --> |CloudFront + ALB| USERS[Users]
     local --> |Port 3000| DEVUSER[Developer]
 ```
 
-**Production (EC2):**
-- Container: `edgemind-backend`
-- Bind mounts: server.js, index.html (hot reload)
-- Manual copy: lib/, styles.css, app.js
+**Production (ECS Fargate):**
+- Cluster: `edgemind-prod-cluster`
+- Image: ECR `edgemind-prod-backend`
+- Frontend: S3 + CloudFront
+- Deploy: GitHub Actions on push to `main`
 
 **Development (Local):**
 - `npm run dev` with nodemon for auto-reload

@@ -6,7 +6,7 @@ EdgeMind uses WebSocket for real-time bidirectional communication between the se
 
 **URL:** `ws://localhost:3000/ws`
 
-**Production:** `ws://<YOUR_EC2_IP>:3000/ws`
+**Production:** `wss://edge-mind.concept-reply-sandbox.com/ws`
 
 **Protocol:** WebSocket (RFC 6455)
 

@@ -8,7 +8,7 @@ EdgeMind exposes a REST API on port 3000 (configurable via `PORT` environment va
 http://localhost:3000
 ```
 
-Production: `http://<YOUR_EC2_IP>:3000`
+Production: `https://edge-mind.concept-reply-sandbox.com`
 
 ---
 

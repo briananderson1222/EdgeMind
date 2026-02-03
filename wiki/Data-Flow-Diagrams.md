@@ -307,7 +307,7 @@ sequenceDiagram
     participant State as state.js
 
     Browser->>DASH: Page load
-    DASH->>WS: new WebSocket(ws://host:8080)
+    DASH->>WS: new WebSocket(ws://host:3000/ws)
     WS->>WS: connection event
 
     WS->>State: Get recent messages, insights
