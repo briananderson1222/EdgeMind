@@ -2,7 +2,7 @@
         /* AI Agent */
         .ai-agent {
             grid-column: span 6;
-            height: 450px;
+            min-height: 450px;
             display: flex;
             flex-direction: column;
         }
@@ -10,7 +10,7 @@
         #claude-insights-container {
             flex: 1;
             overflow-y: auto;
-            max-height: 280px;
+            min-height: 0;
         }
 
         .agent-header {
