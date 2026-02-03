@@ -274,3 +274,70 @@ export function renderActiveFilters() {
         </div>
     `).join('');
 }
+
+/**
+ * Toggle agent pause/resume state
+ */
+export async function toggleAgentPause() {
+    const btn = document.getElementById('agent-pause-btn');
+    if (!btn) return;
+
+    const isPaused = btn.classList.contains('paused');
+    const endpoint = isPaused ? '/api/agent/resume' : '/api/agent/pause';
+
+    try {
+        const response = await fetch(endpoint, { method: 'POST' });
+        const data = await response.json();
+
+        if (data.isPaused) {
+            btn.classList.add('paused');
+            btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,0 12,6 2,12"/></svg><span>Resume</span>';
+            btn.title = 'Resume Analysis';
+
+            const stateEl = document.getElementById('agent-state');
+            if (stateEl) {
+                stateEl.textContent = '⏸ Analysis paused';
+                stateEl.style.color = 'var(--accent-red, #ff3232)';
+            }
+        } else {
+            btn.classList.remove('paused');
+            btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="1" width="4" height="10"/><rect x="7" y="1" width="4" height="10"/></svg><span>Pause</span>';
+            btn.title = 'Pause Analysis';
+
+            const stateEl = document.getElementById('agent-state');
+            if (stateEl) {
+                stateEl.textContent = '● Monitoring factory data streams';
+                stateEl.style.color = '';
+            }
+        }
+    } catch (error) {
+        console.error('Failed to toggle agent pause:', error);
+    }
+}
+
+/**
+ * Check agent pause state on page load
+ */
+export async function checkAgentPauseState() {
+    try {
+        const response = await fetch('/api/agent/status');
+        const data = await response.json();
+
+        if (data.isPaused) {
+            const btn = document.getElementById('agent-pause-btn');
+            if (btn) {
+                btn.classList.add('paused');
+                btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,0 12,6 2,12"/></svg><span>Resume</span>';
+                btn.title = 'Resume Analysis';
+            }
+
+            const stateEl = document.getElementById('agent-state');
+            if (stateEl) {
+                stateEl.textContent = '⏸ Analysis paused';
+                stateEl.style.color = 'var(--accent-red, #ff3232)';
+            }
+        }
+    } catch (error) {
+        console.error('Failed to check agent status:', error);
+    }
+}

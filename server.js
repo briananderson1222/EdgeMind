@@ -1559,6 +1559,44 @@ app.get('/api/agent/health', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/agent/pause - Pause the agentic loop
+ */
+app.post('/api/agent/pause', (req, res) => {
+  try {
+    aiModule.pauseAgenticLoop();
+    res.json({ status: 'paused', isPaused: true });
+  } catch (error) {
+    console.error('Failed to pause agent:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/agent/resume - Resume the agentic loop
+ */
+app.post('/api/agent/resume', (req, res) => {
+  try {
+    aiModule.resumeAgenticLoop();
+    res.json({ status: 'resumed', isPaused: false });
+  } catch (error) {
+    console.error('Failed to resume agent:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/agent/status - Get current agentic loop status
+ */
+app.get('/api/agent/status', (req, res) => {
+  try {
+    const status = aiModule.getAgentStatus();
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // =============================================================================
 // DEMO ENGINE ENDPOINTS
 // =============================================================================

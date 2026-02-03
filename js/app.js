@@ -20,7 +20,9 @@ import { updateMessageRate } from './dashboard-render.js';
 import {
     filterInsights,
     addAnomalyFilter,
-    removeAnomalyFilter
+    removeAnomalyFilter,
+    toggleAgentPause,
+    checkAgentPauseState
 } from './insights.js';
 import {
     filterEvents,
@@ -75,6 +77,7 @@ window.switchPersonaView = switchPersonaView;
 window.filterInsights = filterInsights;
 window.addAnomalyFilter = addAnomalyFilter;
 window.removeAnomalyFilter = removeAnomalyFilter;
+window.toggleAgentPause = toggleAgentPause;
 window.filterEvents = filterEvents;
 window.toggleStreamPause = toggleStreamPause;
 window.selectFactory = selectFactory;
@@ -316,6 +319,9 @@ window.addEventListener('load', () => {
 
     // Then connect to backend
     connectWebSocket();
+
+    // Check agent pause state on init
+    checkAgentPauseState();
 
     // Fetch initial OEE, breakdown, and factory status
     fetchOEE();
