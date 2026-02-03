@@ -560,4 +560,61 @@ capacity_provider_strategies=[
 
 ---
 
+### ADR-016: Tiered Agent Analysis Loop (2026-02-03)
+
+**Context:**
+- The agent loop ran every 30 seconds, calling Claude via AWS Bedrock with up to 9 tool calls each time
+- This produced ~120 Bedrock API calls/hour — expensive and noisy
+- Most calls returned near-identical insights because factory metrics rarely change meaningfully in 30-second windows
+- Duplicate work orders were created for the same anomaly
+- Operators experienced "alert fatigue" from repetitive insights
+
+**Decision:**
+Replace the fixed 30-second analysis interval with a three-tier architecture:
+
+1. **Tier 1 — Cheap Local Delta Detection** (every 2 min, NO AI call):
+   - Query InfluxDB for current metrics, compare against in-memory snapshot
+   - Only trigger AI analysis when key metrics (OEE, Availability, Performance, Quality) change by ≥5% (configurable)
+   - Track equipment state transitions (RUNNING→DOWN, etc.)
+   - Cost: $0 per check
+
+2. **Tier 2 — Targeted AI Analysis** (triggered by Tier 1):
+   - Called only when Tier 1 detects meaningful changes
+   - Focused prompt with specific changes to investigate (not "analyze everything")
+   - Max 3 tool calls per analysis (vs 9 previously)
+   - Cost: ~$0.01 per call, but called rarely
+
+3. **Tier 3 — Scheduled Comprehensive Summary** (every 15 min):
+   - Full analysis regardless of changes, for dashboard freshness
+   - Enterprise rotation: cycles through Enterprise A → B → C → Cross-enterprise comparison
+   - Max 9 tool calls (same as old system)
+
+4. **Deduplication Cache:**
+   - In-memory `Map<string, {timestamp, count, lastInsight}>` with 30-minute TTL
+   - Prevents repeated work orders for the same anomaly within the TTL window
+
+**Configuration (env vars):**
+- `AGENT_CHECK_INTERVAL_MS` — Tier 1 interval (default: 120000 = 2 min)
+- `AGENT_SUMMARY_INTERVAL_MS` — Tier 3 interval (default: 900000 = 15 min)
+- `AGENT_CHANGE_THRESHOLD_PCT` — Change threshold to trigger Tier 2 (default: 5%)
+
+**Alternatives Considered:**
+- Adaptive intervals (exponential backoff) → Rejected: complex, hard to reason about timing
+- ML-based anomaly filtering → Rejected: over-engineered for current scale
+- Simply increasing interval to 5 min → Rejected: still wastes calls when nothing changes
+
+**Consequences:**
+- ✅ ~95% reduction in Bedrock API calls during stable operation (120/hr → ~6/hr)
+- ✅ Faster response to actual anomalies (Tier 2 fires immediately on detection)
+- ✅ Dashboard always has fresh content via Tier 3 rotation
+- ✅ No duplicate work orders within 30-minute windows
+- ✅ Backward compatible — `runTrendAnalysis()` still works for manual invocation
+- ⚠️ First run has no previous snapshot, so no Tier 2 until second Tier 1 check
+- ⚠️ In-memory dedup cache lost on restart (acceptable for demo system)
+
+**Files Modified:** `lib/state.js`, `lib/ai/index.js`, `server.js`
+**Tests Added:** `lib/ai/__tests__/change-detection.test.js` (11 tests)
+
+---
+
 <!-- Add new decisions above this line -->
