@@ -121,8 +121,8 @@ npm run dev 2>&1 | head -20
 | `server.js` | Auto-restart via nodemon |
 | `lib/*.js` | Auto-restart via nodemon |
 | `index.html` | Refresh browser manually |
-| `styles.css` | Refresh browser manually |
-| `app.js` | Refresh browser manually |
+| `css/*.css` | Refresh browser manually |
+| `js/*.js` | Refresh browser manually |
 | `.env` | Restart server manually |
 
 ### Force Restart

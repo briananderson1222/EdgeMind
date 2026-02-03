@@ -36,6 +36,9 @@ flowchart TB
         end
 
         subgraph integrations[Integration Layer]
+            SPARK[sparkplug/decoder.js<br/>Sparkplug B decoder]
+            VECTOR[vector/index.js<br/>ChromaDB vector store]
+            EQUIP[equipment/index.js<br/>Equipment discovery]
             CMMS_I[cmms-interface.js<br/>Generic CMMS interface]
             CMMS_M[cmms-maintainx.js<br/>MaintainX provider]
             AGENTCORE[agentcore/index.js<br/>AWS Bedrock Agents client]
@@ -44,6 +47,7 @@ flowchart TB
 
     subgraph external[External Services]
         BEDROCK[AWS Bedrock Agents]
+        CHROMADB[(ChromaDB)]
     end
 
     ROUTES --> SCHEMA
@@ -71,6 +75,10 @@ flowchart TB
     AI --> AI_TOOLS
     CMMS_I --> CMMS_M
     AI -.-> CMMS_I
+    AI --> VECTOR
+    VECTOR --> CHROMADB
+    MQTT_SUB --> SPARK
+    ROUTES --> EQUIP
     AGENTCORE --> BEDROCK
 ```
 
@@ -98,6 +106,9 @@ flowchart BT
     end
 
     subgraph Layer 3 - Integration
+        SPARK[sparkplug/decoder.js]
+        VECTOR[vector/index.js]
+        EQUIP[equipment/index.js]
         CMMS_I[cmms-interface.js]
         CMMS_M[cmms-maintainx.js]
         AGENTCORE[agentcore/index.js]
@@ -105,6 +116,7 @@ flowchart BT
 
     subgraph External
         BEDROCK[AWS Bedrock Agents]
+        CHROMADB[(ChromaDB)]
     end
 
     INFLUX_C --> CONFIG
@@ -128,6 +140,8 @@ flowchart BT
     AI --> DOMAIN
     AI --> AI_TOOLS
 
+    VECTOR --> CHROMADB
+    EQUIP --> STATE
     CMMS_M --> CMMS_I
     AGENTCORE --> BEDROCK
 ```
@@ -180,6 +194,9 @@ Tier 4: Availability only (degraded)
 
 | Module | Purpose | Dependencies |
 |--------|---------|--------------|
+| `sparkplug/decoder.js` | Sparkplug B payload decoder | None |
+| `vector/index.js` | ChromaDB anomaly persistence, RAG | ChromaDB, Bedrock (embeddings) |
+| `equipment/index.js` | Equipment discovery and state | state |
 | `cmms-interface.js` | Generic CMMS abstraction | None |
 | `cmms-maintainx.js` | MaintainX implementation | cmms-interface |
 | `agentcore/index.js` | AWS Bedrock Agents client | AWS Bedrock Agents (external) |
@@ -214,10 +231,17 @@ classDiagram
 |----------|--------|----------|
 | `GET /api/schema/measurements` | schema/index.js | `refreshSchemaCache()` |
 | `GET /api/schema/hierarchy` | schema/index.js | `refreshHierarchyCache()` |
+| `GET /api/schema/classifications` | schema/index.js | Classification grouping |
 | `GET /api/trends` | ai/index.js | Direct InfluxDB query |
 | `GET /api/oee/v2` | oee/index.js | `calculateOEE()` |
 | `GET /api/oee/discovery` | oee/index.js | `discoverOEESchema()` |
+| `GET /api/oee/lines` | oee/index.js | Line-level OEE |
 | `GET /api/factory/status` | oee/index.js | `getFactoryStatus()` |
+| `GET /api/equipment/states` | equipment/index.js | Equipment state cache |
+| `GET /api/waste/*` | server.js | Waste/defect queries |
+| `GET /api/batch/health` | server.js | ISA-88 batch status |
+| `POST /api/agent/ask` | agentcore/index.js | Bedrock Agent query |
+| `POST /api/influx/query` | server.js | Direct Flux query |
 
 ---
 

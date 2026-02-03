@@ -121,9 +121,13 @@ curl http://localhost:3000/health
 Expected response:
 ```json
 {
-  "status": "ok",
-  "mqtt": { "connected": true },
-  "influxdb": { "connected": true }
+  "status": "online",
+  "mqtt": true,
+  "influxdb": true,
+  "stats": {
+    "messageCount": 0,
+    "influxWrites": 0
+  }
 }
 ```
 

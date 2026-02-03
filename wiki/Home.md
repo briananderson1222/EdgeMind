@@ -30,6 +30,7 @@ flowchart LR
 
     subgraph cloud["Cloud & Storage"]
         INFLUX[("InfluxDB<br/>Time-Series")]
+        CHROMA[("ChromaDB<br/>Vector Store")]
         CLAUDE{{"Claude AI<br/>AWS Bedrock"}}
     end
 
@@ -40,6 +41,8 @@ flowchart LR
     INFLUX -.->|"5-min query"| SERVER
     SERVER -->|"analyze trends"| CLAUDE
     CLAUDE -->|"insights JSON"| SERVER
+    SERVER -->|"store anomalies"| CHROMA
+    CHROMA -.->|"similar anomalies"| SERVER
     SERVER -->|"WebSocket"| DASHBOARD
 ```
 
@@ -100,8 +103,16 @@ flowchart LR
 EdgeMind/
 ├── server.js              # Backend entry point
 ├── index.html             # Live dashboard
-├── styles.css             # Dashboard styles
-├── app.js                 # Dashboard JavaScript
+├── css/                   # Modular stylesheets (23 files)
+│   ├── variables.css      # CSS custom properties, persona themes
+│   ├── base.css           # Reset, body, backgrounds
+│   ├── layout.css         # Grid, persona-view system
+│   └── ...                # 20 more component stylesheets
+├── js/                    # Modular JavaScript (22 ES modules)
+│   ├── app.js             # Entry point, imports all modules
+│   ├── state.js           # Shared state objects
+│   ├── websocket.js       # WebSocket connection
+│   └── ...                # 19 more feature modules
 ├── lib/                   # Backend modules
 │   ├── config.js          # Configuration
 │   ├── validation.js      # Input validation
@@ -114,12 +125,12 @@ EdgeMind/
 │   │   ├── index.js       # Trend analysis, agentic loop
 │   │   └── tools.js       # AI tool definitions
 │   ├── agentcore/         # AWS Bedrock Agents integration
-│   │   └── index.js       # AgentCore client
 │   ├── vector/            # Vector storage (ChromaDB)
-│   │   └── index.js       # Anomaly persistence, RAG
-│   ├── sparkplug/         # Sparkplug B protocol
-│   │   └── decoder.js     # Sparkplug payload decoder
-│   └── cmms-*.js          # CMMS integrations
+│   ├── sparkplug/         # Sparkplug B protocol decoder
+│   ├── equipment/         # Equipment discovery and state
+│   ├── demo/              # Demo scenarios and injection
+│   ├── cmms-interface.js  # Generic CMMS interface
+│   └── cmms-maintainx.js  # MaintainX CMMS provider
 ├── wiki/                  # Wiki documentation (source of truth)
 └── docs/project_notes/    # Project memory (bugs, decisions, facts)
 ```

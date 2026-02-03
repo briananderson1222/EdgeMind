@@ -36,6 +36,7 @@ Provides a single source of truth for configuration across the EdgeMind applicat
 |----------|---------------------|---------|-------------|
 | `bedrock.region` | `AWS_REGION` | `us-east-1` | AWS region for Bedrock |
 | `bedrock.modelId` | `BEDROCK_MODEL_ID` | `us.anthropic.claude-sonnet-4-20250514-v1:0` | Claude model ID |
+| `bedrock.embeddingModelId` | `BEDROCK_EMBEDDING_MODEL_ID` | `amazon.titan-embed-text-v2:0` | Titan embedding model for vector store |
 
 ### InfluxDB Configuration
 

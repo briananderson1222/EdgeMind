@@ -72,11 +72,11 @@ Single Node.js process handling all backend responsibilities:
 
 Static web application served by the backend:
 
-| File | Lines | Purpose |
+| Path | Files | Purpose |
 |------|-------|---------|
-| index.html | ~300 | HTML structure, layout |
-| styles.css | ~1800 | All CSS styling |
-| app.js | ~1500 | WebSocket client, UI logic, charts |
+| `index.html` | 1 | HTML structure, imports CSS/JS modules |
+| `css/` | 23 | Modular stylesheets (variables, layout, components) |
+| `js/` | 22 | ES modules (state, websocket, charts, persona views) |
 
 **Features:**
 - Real-time metric display
