@@ -465,5 +465,5 @@ docker compose -f docker-compose.local.yml up -d --build
 
 - [[Development-Setup]] - Initial environment setup
 - [[Local-Development]] - Day-to-day development
-- [[EC2-Production]] - AWS EC2 deployment
+- [[Fargate-Production]] - AWS ECS Fargate production deployment
 - [[Configuration-Reference]] - Environment variables

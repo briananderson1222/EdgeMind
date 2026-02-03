@@ -13,7 +13,7 @@ EdgeMind connects to manufacturing MQTT brokers, stores time-series data in Infl
 | Get running in 5 minutes | [[Quick-Start]] |
 | Understand the architecture | [[System-Context]] |
 | Set up a dev environment | [[Development-Setup]] |
-| Deploy to production | [[EC2-Production]] |
+| Deploy to production | [[Fargate-Production]] |
 | Learn about the AI analysis | [[AI-Trend-Analysis]] |
 | Prepare for ProveIt! demo | [[Live-Demo-Guide]] |
 
@@ -120,7 +120,8 @@ EdgeMind/
 │   ├── sparkplug/         # Sparkplug B protocol
 │   │   └── decoder.js     # Sparkplug payload decoder
 │   └── cmms-*.js          # CMMS integrations
-└── docs/                  # Documentation
+├── wiki/                  # Wiki documentation (source of truth)
+└── docs/project_notes/    # Project memory (bugs, decisions, facts)
 ```
 
 ---

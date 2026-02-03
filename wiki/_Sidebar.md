@@ -50,7 +50,7 @@
 **Deployment**
 * [[Local-Development]]
 * [[Docker-Deployment]]
-* [[EC2-Production]]
+* [[Fargate-Production]]
 * [[GitHub-OIDC-Setup]]
 
 **Contributing**

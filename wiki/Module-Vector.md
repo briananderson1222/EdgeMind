@@ -275,5 +275,5 @@ When AgentCore becomes available, the module interface remains the same - only t
 
 - [[Module-AI]] - AI trend analysis that uses vector store
 - [[Module-Config]] - Configuration including embedding model
-- [[EC2-Production]] - Production deployment with ChromaDB
+- [[Fargate-Production]] - Production deployment with ChromaDB
 - [[Docker-Deployment]] - Docker networking setup
