@@ -4,6 +4,13 @@
     box-sizing: border-box;
 }
 
+/* Global scrollbar styling */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.3); }
+::-webkit-scrollbar-thumb { background: var(--accent-cyan); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 255, 255, 0.8); }
+
+
 body {
     font-family: 'Rajdhani', sans-serif;
     background: var(--bg-dark);

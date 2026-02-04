@@ -1,12 +1,75 @@
 #!/bin/bash
-# Deploy EdgeMind AgentCore Runtimes + MCP Gateway
-# Usage: ./Deployment\ Scripts/deploy-agents.sh [agent1] [agent2] ...
-# Example: ./Deployment\ Scripts/deploy-agents.sh chat anomaly troubleshoot
-# If no agents specified, deploys all agents in agent/ directory
+# =============================================================================
+# EdgeMind AgentCore Deployment Script
+# =============================================================================
+#
+# PURPOSE:
+# Deploys Strands-based AI agents to AWS Bedrock AgentCore Runtime, enabling
+# the EdgeMind dashboard to use AI-powered chat, anomaly detection, and
+# troubleshooting capabilities.
+#
+# WHAT IT DOES:
+# 1. Reads CDK stack outputs (CloudFront URL, Knowledge Base ID)
+# 2. Creates IAM execution role for agents to call Bedrock
+# 3. Sets up MCP Gateway - converts OpenAPI spec to MCP tools so agents
+#    can call EdgeMind REST APIs (OEE, waste, equipment status, etc.)
+# 4. Deploys each agent to AgentCore Runtime using `agentcore deploy`
+# 5. Stores agent IDs in SSM Parameter Store for backend discovery
+#
+# WHY MCP GATEWAY:
+# AgentCore agents use MCP (Model Context Protocol) for tool calling.
+# The gateway auto-generates MCP tools from our OpenAPI/Swagger spec,
+# so agents can call endpoints like getOEEv2, getEquipmentStates, etc.
+# without manual tool definitions.
+#
+# IAM ROLES & CREDENTIALS:
+#
+#   Agent Execution Role (edgemind-agentcore-execution-role):
+#   - Assumed by: bedrock-agentcore.amazonaws.com
+#   - Inline policy "bedrock-invoke": bedrock:InvokeModel and
+#     bedrock:InvokeModelWithResponseStream on:
+#       * foundation-model/* (direct regional calls)
+#       * inference-profile/* (cross-region inference with us.* model IDs)
+#   - Inline policy "gateway-invoke": bedrock-agentcore:InvokeGateway
+#
+#   Gateway Role (edgemind-prod-gateway-role):
+#   - Assumed by: bedrock-agentcore.amazonaws.com
+#   - Inline policy: secretsmanager:GetSecretValue - required because
+#     AgentCore automatically stores API keys in Secrets Manager when you
+#     create an API Key Credential Provider. The gateway retrieves the
+#     secret at runtime to inject into outbound requests.
+#
+#   API Key Credential Provider:
+#   - When created, AgentCore stores the API key in Secrets Manager and
+#     returns an apiKeySecretArn. The gateway role needs GetSecretValue
+#     permission on this secret.
+#   - Gateway injects the key as x-api-key header when calling EdgeMind APIs
+#   - Currently uses a placeholder key (public-no-auth-required) since
+#     CloudFront→ALB is already secured; can be replaced with real auth
+#
+# PREREQUISITES:
+# - CDK stacks deployed (frontend, knowledgebase)
+# - AWS CLI configured with appropriate permissions
+# - `agentcore` CLI installed (pip install strands-agents)
+# - Agent source code in agent/{name}/src/main.py
+#
+# USAGE:
+#   ./deploy-agents.sh              # Deploy all agents in agent/ directory
+#   ./deploy-agents.sh chat         # Deploy only the chat agent
+#   ./deploy-agents.sh chat anomaly # Deploy specific agents
+#
+# ENVIRONMENT VARIABLES:
+#   CDK_STACK_PREFIX - Stack name prefix (default: edgemind-prod)
+#   AWS_REGION       - Target region (default: us-east-1)
+#   API_KEY          - API key for gateway auth (default: public-no-auth-required)
+#
+# =============================================================================
 
 set -e
 
+CDK_STACK_PREFIX="${CDK_STACK_PREFIX:-edgemind-prod}"
 REGION="${AWS_REGION:-us-east-1}"
+API_KEY="${API_KEY:-public-no-auth-required}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -29,7 +92,7 @@ echo ""
 # 1. Get CloudFront URL from CDK stack
 # ===========================================
 echo "--- Reading CDK outputs ---"
-CLOUDFRONT_DOMAIN=$(aws cloudformation describe-stacks --stack-name edgemind-prod-frontend --region "$REGION" \
+CLOUDFRONT_DOMAIN=$(aws cloudformation describe-stacks --stack-name $CDK_STACK_PREFIX-frontend --region "$REGION" \
   --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomainName'].OutputValue" --output text)
 
 if [ -z "$CLOUDFRONT_DOMAIN" ] || [ "$CLOUDFRONT_DOMAIN" = "None" ]; then
@@ -41,7 +104,7 @@ OPENAPI_URL="https://$CLOUDFRONT_DOMAIN/api/api-spec/v3"
 echo "CloudFront: $CLOUDFRONT_DOMAIN"
 
 # Get Knowledge Base ID (for chat and troubleshoot agents)
-KB_ID=$(aws cloudformation describe-stacks --stack-name edgemind-prod-knowledgebase --region "$REGION" \
+KB_ID=$(aws cloudformation describe-stacks --stack-name $CDK_STACK_PREFIX-knowledgebase --region "$REGION" \
   --query "Stacks[0].Outputs[?OutputKey=='KnowledgeBaseId'].OutputValue" --output text 2>/dev/null || echo "")
 
 if [ -n "$KB_ID" ] && [ "$KB_ID" != "None" ]; then
@@ -71,9 +134,23 @@ if ! aws iam get-role --role-name "$AGENT_EXEC_ROLE" &>/dev/null; then
       }]
     }' > /dev/null
   
-  # Attach basic permissions for agent runtime
-  aws iam attach-role-policy --role-name "$AGENT_EXEC_ROLE" \
-    --policy-arn "arn:aws:iam::aws:policy/AmazonBedrockFullAccess" 2>/dev/null || true
+  # Scoped permissions for agent runtime - InvokeModel only
+  # Includes both foundation-model (direct) and inference-profile (cross-region)
+  aws iam put-role-policy --role-name "$AGENT_EXEC_ROLE" --policy-name "bedrock-invoke" \
+    --policy-document "{
+      \"Version\": \"2012-10-17\",
+      \"Statement\": [{
+        \"Effect\": \"Allow\",
+        \"Action\": [
+          \"bedrock:InvokeModel\",
+          \"bedrock:InvokeModelWithResponseStream\"
+        ],
+        \"Resource\": [
+          \"arn:aws:bedrock:$REGION::foundation-model/*\",
+          \"arn:aws:bedrock:$REGION:$ACCOUNT_ID:inference-profile/*\"
+        ]
+      }]
+    }"
 fi
 
 AGENT_EXEC_ROLE_ARN="arn:aws:iam::$ACCOUNT_ID:role/$AGENT_EXEC_ROLE"
@@ -85,9 +162,9 @@ echo "Agent role: $AGENT_EXEC_ROLE"
 echo ""
 echo "--- Setting up MCP Gateway ---"
 
-GATEWAY_NAME="edgemind-prod-gateway"
-GATEWAY_ROLE="edgemind-prod-gateway-role"
-API_KEY_NAME="edgemind-public-api"
+GATEWAY_NAME="$CDK_STACK_PREFIX-gateway"
+GATEWAY_ROLE="$CDK_STACK_PREFIX-gateway-role"
+API_KEY_NAME="edgemind-api"
 
 # Create gateway role if needed
 if ! aws iam get-role --role-name "$GATEWAY_ROLE" &>/dev/null; then
@@ -141,7 +218,7 @@ if [ -z "$PROVIDER_ARN" ]; then
   echo "Creating API key credential provider..."
   PROVIDER_ARN=$(aws bedrock-agentcore-control create-api-key-credential-provider \
     --name "$API_KEY_NAME" \
-    --api-key "public-no-auth-required" \
+    --api-key "$API_KEY" \
     --region "$REGION" \
     --query 'credentialProviderArn' --output text)
 fi

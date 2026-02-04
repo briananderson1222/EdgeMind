@@ -2,7 +2,7 @@
         /* AI Agent */
         .ai-agent {
             grid-column: span 6;
-            min-height: 450px;
+            height: 450px;
             display: flex;
             flex-direction: column;
         }
