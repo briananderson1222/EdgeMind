@@ -48,15 +48,23 @@ const app = express();
 // Format tool names for user-friendly display
 // Base labels - tool name without prefix
 const TOOL_LABELS = {
+  'getBatchStatus': 'Checking batch status',
+  'getCmmsHealth': 'Checking CMMS connection',
+  'getCmmsWorkOrders': 'Fetching work orders',
+  'getCmmsWorkOrder': 'Fetching work order details',
   'getEquipmentStates': 'Checking equipment status',
-  'getOEEv2': 'Calculating OEE',
-  'getOEELines': 'Fetching line OEE',
-  'getWasteBreakdown': 'Analyzing waste data',
-  'getWasteTrends': 'Analyzing waste trends',
   'getFactoryStatus': 'Getting factory status',
-  'getQualityMetrics': 'Retrieving quality metrics',
+  'getOEEBreakdown': 'Analyzing OEE breakdown',
+  'getOEEDiscovery': 'Discovering OEE schema',
+  'getOEELines': 'Fetching line OEE',
+  'getOEEv2': 'Calculating OEE',
+  'getSchemaClassifications': 'Loading classifications',
+  'getSchemaHierarchy': 'Loading factory hierarchy',
+  'getSchemaMeasurements': 'Loading measurements',
   'getTrends': 'Loading trend data',
-  'getScrapByLine': 'Analyzing scrap by line',
+  'getWasteBreakdown': 'Analyzing waste data',
+  'getWasteByLine': 'Analyzing waste by line',
+  'getWasteTrends': 'Analyzing waste trends',
   'retrieve': 'Searching knowledge base'
 };
 function formatToolName(name) {
@@ -597,6 +605,18 @@ app.get('/health', async (req, res) => {
 });
 
 // API endpoint to query trends directly
+/**
+ * @swagger
+ * /api/trends:
+ *   get:
+ *     operationId: getTrends
+ *     summary: Get 5-minute rolling window of factory metrics
+ *     description: Returns recent time-series data from all factory measurements for trend analysis.
+ *     tags: [trends]
+ *     responses:
+ *       200:
+ *         description: Array of trend data points
+ */
 app.get('/api/trends', async (req, res) => {
   const trends = await aiModule.queryTrends();
   res.json(trends);
@@ -704,7 +724,20 @@ app.get('/api/oee', async (req, res) => {
   }
 });
 
-// NEW: OEE breakdown by enterprise
+/**
+ * @swagger
+ * /api/oee/breakdown:
+ *   get:
+ *     operationId: getOEEBreakdown
+ *     summary: Get OEE breakdown by enterprise
+ *     description: Returns OEE metrics grouped by enterprise for comparison across the organization.
+ *     tags: [oee]
+ *     responses:
+ *       200:
+ *         description: OEE breakdown by enterprise
+ *       500:
+ *         description: Server error
+ */
 app.get('/api/oee/breakdown', async (req, res) => {
   try {
     const breakdown = await queryOEEBreakdown();
@@ -820,7 +853,18 @@ app.get('/api/oee/v2', async (req, res) => {
 });
 
 /**
- * GET /api/oee/discovery - Returns discovered OEE schema for all enterprises
+ * @swagger
+ * /api/oee/discovery:
+ *   get:
+ *     operationId: getOEEDiscovery
+ *     summary: Get discovered OEE schema for all enterprises
+ *     description: Returns auto-discovered OEE measurement mappings and calculation tiers for each enterprise.
+ *     tags: [oee]
+ *     responses:
+ *       200:
+ *         description: OEE discovery schema with available tiers
+ *       500:
+ *         description: Server error
  */
 app.get('/api/oee/discovery', async (req, res) => {
   try {
@@ -892,7 +936,20 @@ app.get('/api/schema/measurements', async (req, res) => {
   }
 });
 
-// NEW: Schema hierarchy endpoint - returns topic hierarchy tree
+/**
+ * @swagger
+ * /api/schema/hierarchy:
+ *   get:
+ *     operationId: getSchemaHierarchy
+ *     summary: Get topic hierarchy tree
+ *     description: Returns the factory schema organized as Enterprise > Site > Area > Machine hierarchy.
+ *     tags: [schema]
+ *     responses:
+ *       200:
+ *         description: Hierarchical schema tree with cache metadata
+ *       500:
+ *         description: Server error
+ */
 app.get('/api/schema/hierarchy', async (req, res) => {
   try {
     // Try to refresh cache if needed
@@ -1269,7 +1326,28 @@ app.get('/api/waste/trends', async (req, res) => {
   }
 });
 
-// NEW: Waste by production line endpoint
+/**
+ * @swagger
+ * /api/waste/by-line:
+ *   get:
+ *     operationId: getWasteByLine
+ *     summary: Get waste metrics by production line
+ *     description: Returns waste and defect counts grouped by production line for the last 24 hours.
+ *     tags: [waste]
+ *     parameters:
+ *       - in: query
+ *         name: enterprise
+ *         schema:
+ *           type: string
+ *         description: Filter by enterprise (optional)
+ *     responses:
+ *       200:
+ *         description: Waste data by production line
+ *       400:
+ *         description: Invalid enterprise parameter
+ *       500:
+ *         description: Server error
+ */
 app.get('/api/waste/by-line', async (req, res) => {
   try {
     // SECURITY: Validate enterprise parameter
@@ -1853,8 +1931,18 @@ app.use('/api/demo', demoEngine.router);
 // =============================================================================
 
 /**
- * GET /api/waste/breakdown - Waste breakdown by enterprise (stub for Lambda tools)
- * This reuses the existing /api/waste/by-line endpoint data
+ * @swagger
+ * /api/waste/breakdown:
+ *   get:
+ *     operationId: getWasteBreakdown
+ *     summary: Get waste breakdown by enterprise
+ *     description: Returns total waste counts aggregated by enterprise for the last 24 hours.
+ *     tags: [waste]
+ *     responses:
+ *       200:
+ *         description: Waste totals by enterprise
+ *       500:
+ *         description: Server error
  */
 app.get('/api/waste/breakdown', async (req, res) => {
   try {
@@ -1922,6 +2010,53 @@ app.get('/api/waste/breakdown', async (req, res) => {
 
 /**
  * @swagger
+ * /api/batch/status:
+ *   get:
+ *     operationId: getBatchStatus
+ *     summary: Get ISA-88 batch process status
+ *     description: Returns real-time batch equipment status for Enterprise C including state, phase, batch ID, and recipe information.
+ *     tags: [batch]
+ *     responses:
+ *       200:
+ *         description: Batch equipment status with summary counts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 equipment:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       type:
+ *                         type: string
+ *                       state:
+ *                         type: string
+ *                       batchId:
+ *                         type: string
+ *                       recipe:
+ *                         type: string
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     running:
+ *                       type: integer
+ *                     idle:
+ *                       type: integer
+ *                     complete:
+ *                       type: integer
+ *                     fault:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *       500:
+ *         description: Server error
+ */
 app.get('/api/batch/status', async (req, res) => {
   try {
     // Dynamically discover equipment from hierarchy cache
@@ -2224,10 +2359,7 @@ app.get('/api/batch/status', async (req, res) => {
   }
 });
 
-/**
- * POST /api/influx/query - Direct InfluxDB query endpoint (stub for Lambda tools)
- * SECURITY: This is a privileged endpoint - should be restricted in production
- */
+// POST /api/influx/query - Direct InfluxDB query (internal use, not exposed in API docs)
 app.post('/api/influx/query', express.json(), async (req, res) => {
   try {
     const { query } = req.body;
