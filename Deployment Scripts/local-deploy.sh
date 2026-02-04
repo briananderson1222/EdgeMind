@@ -246,8 +246,6 @@ print_status() {
     echo "  ChromaDB API:     http://localhost:8002"
     echo "  MCP Gateway:      http://localhost:8001"
     echo "  Agent Chat:       http://localhost:8080"
-    echo "  Agent Troubleshoot: http://localhost:8081"
-    echo "  Agent Anomaly:    http://localhost:8082"
     echo ""
     echo -e "${YELLOW}Useful commands:${NC}"
     echo "  View logs:      cd 'Deployment Scripts' && docker compose -f docker-compose.local.yml logs -f"
