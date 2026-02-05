@@ -34,14 +34,13 @@ class FrontendStack(Stack):
 
         # Build resource name prefix
         name_prefix = f"{project_name}-{environment}"
-        # Only set explicit bucket names when resource_suffix is provided (for CI/CD)
-        # Without suffix, let CDK auto-generate names (matches existing deployments)
-        bucket_name_prefix = f"{name_prefix}-{resource_suffix}" if resource_suffix else None
+        # Bucket name prefix: use suffix if provided, otherwise just name_prefix
+        bucket_name_prefix = f"{name_prefix}-{resource_suffix}" if resource_suffix else name_prefix
 
         # S3 bucket for frontend static files
         self.frontend_bucket = s3.Bucket(
             self, "FrontendBucket",
-            bucket_name=f"{bucket_name_prefix}-frontend" if bucket_name_prefix else None,
+            bucket_name=f"{bucket_name_prefix}-frontend",
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
@@ -128,7 +127,7 @@ class FrontendStack(Stack):
         # CloudFront logs bucket (must be created before distribution)
         log_bucket = s3.Bucket(
             self, "CloudFrontLogBucket",
-            bucket_name=f"{bucket_name_prefix}-cloudfront-logs" if bucket_name_prefix else None,
+            bucket_name=f"{bucket_name_prefix}-cloudfront-logs",
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
