@@ -50,7 +50,7 @@
 # PREREQUISITES:
 # - CDK stacks deployed (frontend, knowledgebase)
 # - AWS CLI configured with appropriate permissions
-# - `agentcore` CLI installed (pip install strands-agents)
+# - `uv` installed (https://docs.astral.sh/uv/) - agentcore CLI runs via uvx
 # - Agent source code in agent/{name}/src/main.py
 #
 # USAGE:
@@ -320,7 +320,7 @@ agents:
 EOF
   
   # Build deploy command - pass all env vars, agents use what they need
-  DEPLOY_CMD="AWS_REGION=$REGION agentcore deploy --agent $AGENT_NAME --auto-update-on-conflict"
+  DEPLOY_CMD="AWS_REGION=$REGION uvx --from bedrock-agentcore-starter-toolkit agentcore deploy --agent $AGENT_NAME --auto-update-on-conflict"
   if [ -n "$GATEWAY_URL" ]; then
     DEPLOY_CMD="$DEPLOY_CMD --env MCP_SERVER_URL=$GATEWAY_URL"
   fi
