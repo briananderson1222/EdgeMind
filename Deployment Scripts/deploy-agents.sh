@@ -59,9 +59,10 @@
 #   ./deploy-agents.sh chat anomaly # Deploy specific agents
 #
 # ENVIRONMENT VARIABLES:
-#   CDK_STACK_PREFIX - Stack name prefix (default: edgemind-prod)
-#   AWS_REGION       - Target region (default: us-east-1)
-#   API_KEY          - API key for gateway auth (default: public-no-auth-required)
+#   CDK_STACK_PREFIX  - Stack name prefix (default: edgemind-prod)
+#   AWS_REGION        - Target region (default: us-east-1)
+#   API_KEY           - API key for gateway auth (default: public-no-auth-required)
+#   BEDROCK_MODEL_ID  - Bedrock model ID for agents (default: from CDK or Claude Sonnet)
 #
 # =============================================================================
 
@@ -70,6 +71,7 @@ set -e
 CDK_STACK_PREFIX="${CDK_STACK_PREFIX:-edgemind-prod}"
 REGION="${AWS_REGION:-us-east-1}"
 API_KEY="${API_KEY:-public-no-auth-required}"
+BEDROCK_MODEL="${BEDROCK_MODEL_ID:-}"  # Will try to get from CDK if not set
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -112,6 +114,23 @@ if [ -n "$KB_ID" ] && [ "$KB_ID" != "None" ]; then
 else
   echo "WARNING: Knowledge Base not found (KB retrieval will be disabled)"
   KB_ID=""
+fi
+
+# Get Bedrock Model ID from CDK backend stack (if not overridden)
+if [ -z "$BEDROCK_MODEL" ]; then
+  # Try to get from ECS task definition environment
+  TASK_DEF=$(aws ecs describe-services --cluster edgemind-prod-cluster --services edgemind-prod-backend \
+    --query "services[0].taskDefinition" --output text 2>/dev/null || echo "")
+  if [ -n "$TASK_DEF" ]; then
+    BEDROCK_MODEL=$(aws ecs describe-task-definition --task-definition "$TASK_DEF" \
+      --query "taskDefinition.containerDefinitions[0].environment[?name=='BEDROCK_MODEL_ID'].value" --output text 2>/dev/null || echo "")
+  fi
+fi
+if [ -n "$BEDROCK_MODEL" ] && [ "$BEDROCK_MODEL" != "None" ]; then
+  echo "Bedrock Model: $BEDROCK_MODEL"
+else
+  BEDROCK_MODEL=""
+  echo "WARNING: BEDROCK_MODEL_ID not set (agents will use their defaults)"
 fi
 
 # ===========================================
@@ -225,7 +244,7 @@ fi
 
 # Create/update gateway target with OpenAPI spec
 echo "Fetching OpenAPI spec..."
-SPEC=$(curl -s "$OPENAPI_URL")
+SPEC=$(curl -s "$OPENAPI_URL" | jq --arg url "https://$CLOUDFRONT_DOMAIN" '.servers = [{"url": $url, "description": "CloudFront"}]')
 
 EXISTING_TARGET=$(aws bedrock-agentcore-control list-gateway-targets \
   --gateway-identifier "$GATEWAY_ID" --region "$REGION" \
@@ -326,6 +345,9 @@ EOF
   fi
   if [ -n "$KB_ID" ]; then
     DEPLOY_CMD="$DEPLOY_CMD --env STRANDS_KNOWLEDGE_BASE_ID=$KB_ID"
+  fi
+  if [ -n "$BEDROCK_MODEL" ]; then
+    DEPLOY_CMD="$DEPLOY_CMD --env BEDROCK_MODEL_ID=$BEDROCK_MODEL"
   fi
   
   eval $DEPLOY_CMD
