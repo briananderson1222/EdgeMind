@@ -170,7 +170,7 @@ aws iam put-role-policy --role-name "$AGENT_EXEC_ROLE" --policy-name "bedrock-in
       ],
       \"Resource\": [
         \"arn:aws:bedrock:*::foundation-model/*\",
-        \"arn:aws:bedrock:$REGION:$ACCOUNT_ID:inference-profile/*\"
+        \"arn:aws:bedrock:*:$ACCOUNT_ID:inference-profile/*\"
       ]
     }]
   }"

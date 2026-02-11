@@ -70,7 +70,10 @@ check_prerequisites() {
 setup_environment() {
     echo -e "${YELLOW}[2/4] Setting up environment...${NC}"
 
-    if [ ! -f "$PROJECT_ROOT/.env" ]; then
+    ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/.env}"
+    echo -e "  Using env file: ${ENV_FILE}"
+
+    if [ ! -f "$ENV_FILE" ]; then
         if [ -f "$PROJECT_ROOT/.env.template" ]; then
             echo -e "  Creating .env from template..."
             cp "$PROJECT_ROOT/.env.template" "$PROJECT_ROOT/.env"
@@ -110,7 +113,7 @@ setup_environment() {
 
     # Source and validate required variables
     set -a
-    source "$PROJECT_ROOT/.env"
+    source "$ENV_FILE"
     set +a
 
     local valid=1
@@ -127,7 +130,7 @@ setup_environment() {
 
     if [ $valid -eq 0 ]; then
         echo ""
-        echo -e "${RED}Please update $PROJECT_ROOT/.env with required values and re-run.${NC}"
+        echo -e "${RED}Please update $ENV_FILE with required values and re-run.${NC}"
         exit 1
     fi
 
@@ -143,7 +146,7 @@ setup_aws_credentials() {
 
     # Helper to update .env file with credentials
     update_env_creds() {
-        local env_file="$PROJECT_ROOT/.env"
+        local env_file="$ENV_FILE"
         # Remove old AWS creds (including expiration)
         grep -v "^AWS_ACCESS_KEY_ID=" "$env_file" | grep -v "^AWS_SECRET_ACCESS_KEY=" | grep -v "^AWS_SESSION_TOKEN=" | grep -v "^AWS_CREDENTIAL_EXPIRATION=" > "$env_file.tmp"
         mv "$env_file.tmp" "$env_file"
@@ -217,11 +220,14 @@ setup_aws_credentials() {
 deploy_services() {
     echo -e "${YELLOW}[4/4] Deploying services...${NC}"
 
+    # Copy env file into compose directory (nerdctl compose ignores --env-file, always reads .env from compose dir)
+    cp "$ENV_FILE" "$SCRIPT_DIR/.env"
+
     # Stop existing containers first for clean restart
-    docker compose -f docker-compose.local.yml --env-file "$PROJECT_ROOT/.env" down 2>/dev/null || true
+    docker compose -f docker-compose.local.yml --env-file "$ENV_FILE" down 2>/dev/null || true
 
     # Start all services (builds if needed, pulls if needed)
-    docker compose -f docker-compose.local.yml --env-file "$PROJECT_ROOT/.env" up -d --build
+    docker compose -f docker-compose.local.yml --env-file "$ENV_FILE" up -d --build
 
     echo -e "${GREEN}  OK: Services deployed${NC}"
     echo ""
@@ -236,7 +242,7 @@ print_status() {
     echo -e "${BLUE}==================================================${NC}"
     echo ""
     echo -e "${YELLOW}Services:${NC}"
-    docker compose -f docker-compose.local.yml --env-file "$PROJECT_ROOT/.env" ps
+    docker compose -f docker-compose.local.yml --env-file "$ENV_FILE" ps
     echo ""
     echo -e "${YELLOW}Access URLs:${NC}"
     echo "  Dashboard:        http://localhost:3000/"

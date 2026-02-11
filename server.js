@@ -599,6 +599,7 @@ app.get('/health', async (req, res) => {
   res.json({
     status: 'online',
     mqtt: mqttClient.connected,
+    mqttHost: CONFIG.mqtt.host,
     influxdb: influxOk,
     stats: factoryState.stats
   });
