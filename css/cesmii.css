@@ -1,0 +1,197 @@
+/* ========== CESMII SM PROFILE VIEW ========== */
+
+/* Work order cards grid */
+.cesmii-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 20px;
+}
+
+/* Stats bar at top */
+.cesmii-stats-bar {
+    display: flex;
+    gap: 16px;
+    font-size: 0.8rem;
+    font-family: 'Share Tech Mono', monospace;
+    color: #888;
+}
+
+.cesmii-stats-bar .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.cesmii-stats-bar .stat-value {
+    color: var(--accent-cyan);
+    font-weight: 600;
+}
+
+/* Work order card */
+.cesmii-work-order-card {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 3px solid var(--accent-cyan);
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.3s ease;
+}
+
+.cesmii-work-order-card:hover {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+}
+
+.cesmii-work-order-card.validation-invalid {
+    border-left-color: var(--accent-red);
+}
+
+.cesmii-work-order-card.validation-warning {
+    border-left-color: var(--accent-amber);
+}
+
+/* Card header */
+.cesmii-wo-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.cesmii-wo-id {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--accent-cyan);
+    font-weight: 600;
+}
+
+.cesmii-wo-time {
+    font-size: 0.75rem;
+    color: #666;
+}
+
+/* Product info */
+.cesmii-wo-product {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #eee;
+    margin-bottom: 8px;
+}
+
+.cesmii-wo-meta {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    color: #999;
+}
+
+.cesmii-wo-meta span {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+/* Validation badge */
+.cesmii-validation-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    --badge-color: #888;
+    --badge-bg: rgba(255, 255, 255, 0.08);
+    background: var(--badge-bg);
+    color: var(--badge-color);
+}
+
+.cesmii-validation-badge.valid { --badge-color: var(--accent-green); --badge-bg: rgba(0, 255, 136, 0.15); }
+.cesmii-validation-badge.invalid { --badge-color: var(--accent-red); --badge-bg: rgba(255, 68, 68, 0.15); }
+.cesmii-validation-badge.no_profile { --badge-color: var(--accent-amber); --badge-bg: rgba(255, 171, 0, 0.15); }
+
+/* Ingredient list */
+.cesmii-ingredient-list {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cesmii-ingredient-list h4 {
+    font-size: 0.75rem;
+    color: #777;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.cesmii-ingredient {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #bbb;
+    padding: 3px 0;
+}
+
+.cesmii-ingredient .ingredient-name {
+    color: #ddd;
+}
+
+.cesmii-ingredient .ingredient-qty {
+    color: var(--accent-cyan);
+    font-family: 'Share Tech Mono', monospace;
+}
+
+/* Profile list */
+.cesmii-profile-card {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+}
+
+.cesmii-profile-name {
+    font-weight: 600;
+    color: #eee;
+    margin-bottom: 4px;
+}
+
+.cesmii-profile-meta {
+    font-size: 0.8rem;
+    color: #777;
+}
+
+/* Flow indicator for bidirectional */
+.cesmii-flow-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: #888;
+    padding: 8px 12px;
+    background: rgba(0, 255, 255, 0.05);
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+
+.cesmii-flow-indicator .flow-arrow {
+    color: var(--accent-cyan);
+    font-weight: bold;
+}
+
+/* Scroll container for work orders list */
+.cesmii-scroll {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+/* Responsive breakpoint for mobile */
+@media (max-width: 768px) {
+    .cesmii-grid {
+        grid-template-columns: 1fr;
+    }
+}

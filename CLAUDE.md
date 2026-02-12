@@ -51,7 +51,19 @@ lib/
 ├── ai/
 │   └── index.js        # Claude/Bedrock AI: trend analysis, agentic loop
 ├── cmms-interface.js   # Generic CMMS interface
-└── cmms-maintainx.js   # MaintainX CMMS provider implementation
+├── cmms-maintainx.js   # MaintainX CMMS provider implementation
+├── cesmii/
+│   ├── detector.js      # CESMII SM Profile payload detection (JSON-LD)
+│   ├── validator.js      # OPC UA type validation for SM Profile payloads
+│   ├── handler.js        # MQTT message handling for CESMII payloads
+│   ├── publisher.js      # Publish OEE/insights as SM Profile JSON-LD
+│   ├── demo-publisher.js # Demo work order publisher for presentations
+│   ├── routes.js         # REST API endpoints for CESMII data
+│   └── profiles/         # SM Profile JSON-LD definitions
+│       ├── WorkOrderV1.jsonld
+│       ├── FeedIngredientV1.jsonld
+│       ├── FactoryInsightV1.jsonld
+│       └── OEEReportV1.jsonld
 ```
 
 **Module Dependencies:**
@@ -64,6 +76,12 @@ lib/
 - `schema/index.js` - Depends on: influx/client, state, config, validation, domain-context
 - `oee/index.js` - Depends on: influx/client, state, schema, config, validation
 - `ai/index.js` - Depends on: influx/client, state, config, domain-context (+ runtime: broadcast, cmms)
+- `cesmii/detector.js` - No dependencies (foundation)
+- `cesmii/validator.js` - No dependencies (uses fs, path)
+- `cesmii/handler.js` - Depends on: cesmii/detector, cesmii/validator, state, config, influx/writer
+- `cesmii/publisher.js` - Depends on: config, state
+- `cesmii/demo-publisher.js` - Depends on: config
+- `cesmii/routes.js` - Depends on: config, state, validation
 
 ## Frontend Files
 
@@ -90,6 +108,7 @@ css/                 # Modular CSS (22 files)
 ├── demo.css         # Demo control UI
 ├── coo-views.css    # COO persona view styles
 ├── plant-views.css  # Plant Manager persona view styles
+├── cesmii.css       # CESMII work order panel styles
 ├── footer.css       # Footer branding
 └── responsive.css   # Media queries
 js/                  # ES modules (22 files)
@@ -112,6 +131,7 @@ js/                  # ES modules (22 files)
 ├── plant-oee-drilldown.js  # Plant Mgr: OEE gauge + charts
 ├── plant-equipment.js      # Plant Mgr: Filterable equipment grid
 ├── plant-alerts.js         # Plant Mgr: Alerts + CMMS work orders
+├── cesmii.js             # Plant Mgr: CESMII work orders + SM Profiles
 ├── demo-scenarios.js # Demo scenario launcher
 ├── demo-inject.js   # Anomaly injection controls
 └── demo-timer.js    # Reset controls, presentation timer
@@ -177,6 +197,17 @@ curl http://localhost:3000/api/schema/measurements
 - `GET /api/cmms/work-orders?limit={N}` - List recent work orders from MaintainX (max 50)
 - `GET /api/cmms/work-orders/:id` - Get work order status by ID
 
+### CESMII SM Profiles
+
+- `GET /api/cesmii/work-orders` - List received CESMII work orders. Query: `?limit=50&enterprise=Enterprise+B`
+- `GET /api/cesmii/profiles` - List bundled SM Profile definitions with metadata
+- `GET /api/cesmii/stats` - CESMII processing statistics (received, validated, failed, published)
+- `POST /api/cesmii/publish/oee` - Publish OEE report as OEEReportV1 SM Profile. Body: `{ enterprise, site, oeeData }`
+- `POST /api/cesmii/publish/insight` - Publish insight as FactoryInsightV1 SM Profile. Body: `{ enterprise, insight }`
+- `POST /api/cesmii/demo/start` - Start demo work order publisher
+- `POST /api/cesmii/demo/stop` - Stop demo work order publisher
+- `GET /api/cesmii/demo/status` - Check demo publisher status
+
 ### Demo Control
 
 - `GET /api/demo/scenarios` - List available demo scenarios
@@ -190,6 +221,7 @@ curl http://localhost:3000/api/schema/measurements
 
 - `POST /api/agent/ask` - Send question to orchestrator agent
 - `GET /api/agent/context` - Get comprehensive factory context for agentic workflows
+- `GET /api/agent/token-usage` - Get token usage tracking (inputTokens, outputTokens, callCount, dailyReset)
 
 ### Health
 
@@ -198,10 +230,15 @@ curl http://localhost:3000/api/schema/measurements
 ## Environment Variables
 
 - `PORT` - HTTP server port (default: 3000)
+- `LOG_LEVEL` - Set to 'debug' to enable verbose console.debug output (default: suppressed)
 - `AWS_REGION` - AWS region for Bedrock (default: us-east-1)
 - `CMMS_ENABLED` - Set to 'true' to enable MaintainX CMMS integration
 - `MAINTAINX_API_KEY` - MaintainX API key (required when CMMS enabled)
 - `DISABLE_INSIGHTS` - Set to 'true' to disable AI analysis loop
+- `CESMII_ENABLED` - Set to 'false' to disable CESMII SM Profile support (default: enabled)
+- `CESMII_IGNORED_PROFILES` - Comma-separated list of SM Profile types to skip (default: 'AssetOEEV1,FlowComputer')
+- `BEDROCK_TIER_MODEL_ID` - Model ID for routine analysis (default: Sonnet, same as primary). Tier 2/3 use this model. Can be overridden to a cheaper model (e.g., Haiku) once subscribed in Bedrock Marketplace. Interactive Q&A uses `BEDROCK_MODEL_ID` (Sonnet).
+- `AGENT_DAILY_TOKEN_BUDGET` - Daily input token limit for AI analysis (default: 500000). Circuit breaker pauses analysis when exceeded.
 
 Note: AI uses **AWS Bedrock** (not Anthropic API directly). No ANTHROPIC_API_KEY needed.
 
@@ -225,9 +262,10 @@ Examples:
 ## WebSocket Message Types
 
 **Server → Client:**
-- `initial_state` - Sent on connection with recent messages, insights, stats
+- `initial_state` - Sent on connection with recent messages, insights, stats, cesmiiWorkOrders, cesmiiStats
 - `mqtt_message` - Real-time MQTT data (throttled)
 - `trend_insight` - Claude's trend analysis results
+- `cesmii_work_order` - CESMII SM Profile work order received and validated
 
 **Client → Server:**
 - `get_stats` - Request current statistics
@@ -317,7 +355,7 @@ lib/demo/
 - **Framework**: Jest
 - **Run**: `npm test`
 - **Test location**: `lib/__tests__/*.test.js`
-- **Test suites**: validation, influx writer, OEE calculation, CMMS MaintainX provider
+- **Test suites**: validation, influx writer, OEE calculation, CMMS MaintainX provider, CESMII validator, CESMII handler, CESMII publisher, trends, SPC
 
 **IMPORTANT: All tests must pass before pushing any frontend or backend code changes.** Run `npm test` and verify the full suite passes. CI will also run `npm test` — failed tests block deployment.
 

@@ -147,4 +147,31 @@ Completed work and issue tracking. For quick reference - full details live in gi
 - **Commit**: `65e8219`
 - **Files**: `.github/workflows/deploy.yml`, `.github/workflows/deploy-backend.yml`, `.github/workflows/deploy-frontend.yml`
 
+### 2026-02-11 - CESMII SM Profile Integration
+- **Status**: Completed
+- **Description**: Full bidirectional CESMII SM Profile support
+- **Files:** 10 new files (lib/cesmii/*, css/cesmii.css, js/cesmii.js, 3 test files), 9 modified files
+- **Tests:** 369 tests passing (11 suites), 3 new CESMII test files
+- **Features:** JSON-LD detection, OPC UA validation (13 types), MQTT interception, InfluxDB storage, WebSocket broadcast, REST APIs, frontend panel, OEE/insight publisher, demo work order publisher
+- **Branch:** feature/cesmii
+
+### 2026-02-12 - Bedrock Cost Optimization (PR #51)
+- **Status**: Completed
+- **Description**: Single-shot Bedrock calls (pre-fetch tool data, eliminate tool loops), Tier 3 interval 15min→30min, daily token budget circuit breaker, log noise reduction (`console.debug` suppression), CESMII ignored profile types config.
+- **PR**: #51 (merged to dev)
+- **Branch**: feature/cost-optimization
+
+### 2026-02-12 - Tier Model Marketplace Subscription Errors
+- **Status**: Completed
+- **Description**: Haiku 4.5 and Claude 3.5 Haiku both failed with AWS Marketplace subscription errors ("Model access is denied"). Amazon-native models (Nova) don't require subscriptions. Temporarily set tier model to Sonnet as fallback.
+- **Root cause**: Anthropic models on Bedrock require Marketplace subscription; policy is to not subscribe to new models.
+- **Branch**: dev
+
+### 2026-02-12 - DRR-002: Switch Tier Model to Nova Lite
+- **Status**: Completed
+- **Description**: FPF reasoning cycle confirmed Nova Lite works via InvokeModelCommand. 3 code changes: (1) `temperature: 0` in Nova inferenceConfig, (2) token tracking handles both camelCase and snake_case, (3) default tierModelId → `us.amazon.nova-lite-v1:0`. 61x cheaper per call.
+- **FPF Reference**: `.fpf/decisions/DRR-002-nova-lite-tier-model.md`
+- **Files**: `lib/config.js`, `lib/ai/index.js`
+- **Branch**: dev
+
 <!-- Add new entries above this line -->

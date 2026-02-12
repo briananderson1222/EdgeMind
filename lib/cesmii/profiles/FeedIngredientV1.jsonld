@@ -1,0 +1,42 @@
+{
+  "@context": {
+    "@vocab": "https://cesmii.org/smprofile/",
+    "profile": "https://cesmii.org/smprofile/profile",
+    "opc": "http://opcfoundation.org/UA/"
+  },
+  "@type": "FeedIngredientV1",
+  "profileDefinition": "https://github.com/Concept-Reply-US/EdgeMind/blob/main/lib/cesmii/profiles/FeedIngredientV1.jsonld",
+  "profile": {
+    "name": "FeedIngredientV1",
+    "version": "1.0.0",
+    "description": "CESMII SM Profile for feed ingredient data within work orders",
+    "author": "EdgeMind / Concept Reply",
+    "attributes": [
+      {
+        "attributeName": "IngredientName",
+        "dataType": "opc:String",
+        "description": "Name of the ingredient"
+      },
+      {
+        "attributeName": "Quantity",
+        "dataType": "opc:Double",
+        "description": "Amount of ingredient required"
+      },
+      {
+        "attributeName": "UnitOfMeasure",
+        "dataType": "opc:String",
+        "description": "Unit of measure (kg, lbs, liters, etc.)"
+      },
+      {
+        "attributeName": "LotNumber",
+        "dataType": "opc:String",
+        "description": "Lot/batch number for traceability"
+      },
+      {
+        "attributeName": "PercentOfTotal",
+        "dataType": "opc:Float",
+        "description": "Percentage of total recipe"
+      }
+    ]
+  }
+}

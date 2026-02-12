@@ -1,4 +1,11 @@
 // server.js - Factory Intelligence Backend with InfluxDB + Agentic Claude
+
+// Suppress console.debug in production to reduce log noise
+// Set LOG_LEVEL=debug to re-enable verbose logging
+if (process.env.LOG_LEVEL !== 'debug') {
+  console.debug = () => {};
+}
+
 const mqtt = require('mqtt');
 const { BedrockRuntimeClient } = require('@aws-sdk/client-bedrock-runtime');
 const WebSocket = require('ws');
@@ -12,6 +19,9 @@ const { parseJsonValue } = require('./lib/ai/tools');
 const vectorStore = require('./lib/vector');
 const { isSparkplugTopic, decodePayload, extractMetrics } = require('./lib/sparkplug/decoder');
 const demoEngine = require('./lib/demo/engine');
+const cesmiiHandler = require('./lib/cesmii/handler');
+const cesmiiRoutes = require('./lib/cesmii/routes');
+const { isCesmiiPayload } = require('./lib/cesmii/detector');
 
 // Foundation modules
 const CONFIG = require('./lib/config');
@@ -41,6 +51,11 @@ const {
   queryFactoryStatus
 } = require('./lib/oee');
 const { getEquipmentMetadata, resolveEquipmentId } = require('./lib/equipment');
+
+// NEW: Trend analysis, SPC, and production tracking modules
+const trendsModule = require('./lib/trends');
+const spcModule = require('./lib/spc');
+const productionModule = require('./lib/production');
 
 // Initialize services
 const app = express();
@@ -220,10 +235,24 @@ mqttClient.on('connect', async () => {
 
   // Initialize demo engine with MQTT client
   demoEngine.init({ mqttClient });
+
+  // Initialize CESMII SM Profile handler and publisher
+  if (CONFIG.cesmii.enabled) {
+    cesmiiHandler.init({ writeApi, broadcast: broadcastToClients });
+
+    // Initialize publisher for bidirectional flow
+    const cesmiiPublisher = require('./lib/cesmii/publisher');
+    const cesmiiDemoPublisher = require('./lib/cesmii/demo-publisher');
+    cesmiiPublisher.init({ mqttClient });
+    cesmiiRoutes.setPublisher(cesmiiPublisher);
+    cesmiiRoutes.setDemoPublisher(cesmiiDemoPublisher, mqttClient);
+
+    console.log('[CESMII] SM Profile handler and publisher initialized');
+  }
 });
 
 mqttClient.on('error', (error) => {
-  console.error('❌ MQTT Error:', error);
+  console.error('❌ MQTT Error:', error.message);
 });
 
 // parseTopicToInflux is now imported from './lib/influx/client'
@@ -245,7 +274,7 @@ mqttClient.on('message', async (topic, message) => {
     isInjected = true;
     topicParts.splice(1, 1);
     actualTopic = topicParts.join('/');
-    console.log(`[DEMO] Intercepted demo data: ${topic} -> ${actualTopic}`);
+    console.debug(`[DEMO] Intercepted demo data: ${topic} -> ${actualTopic}`);
   }
 
   // SPARKPLUG B PROTOCOL HANDLING
@@ -299,6 +328,27 @@ mqttClient.on('message', async (topic, message) => {
       // Log Sparkplug decoding errors but don't crash
       console.error(`Sparkplug decode error for topic ${topic}:`, sparkplugError.message);
       return; // EXIT EARLY - don't try JSON parsing on binary data
+    }
+  }
+
+  // CESMII SM PROFILE HANDLING
+  // Check if this is a CESMII JSON-LD payload (after Sparkplug, before standard processing)
+  if (CONFIG.cesmii.enabled) {
+    try {
+      const payloadStr = message.toString();
+
+      // Security: Check payload size before parsing (DoS protection)
+      if (payloadStr.length > 65536) {
+        console.warn(`[CESMII] Payload too large (${payloadStr.length} bytes), skipping`);
+      } else {
+        const parsed = JSON.parse(payloadStr);
+        // Use proper detector function (checks @context or profileDefinition)
+        if (isCesmiiPayload(parsed)) {
+          if (cesmiiHandler.handleCesmiiMessage(actualTopic, parsed, { isInjected })) return;
+        }
+      }
+    } catch (e) {
+      // Not valid JSON, fall through to standard processing
     }
   }
 
@@ -436,7 +486,7 @@ mqttClient.on('message', async (topic, message) => {
             }
           });
 
-          console.log(`[STATE] ${equipmentKey}: ${stateInfo.name}`);
+          console.debug(`[STATE] ${equipmentKey}: ${stateInfo.name}`);
         }
       }
     }
@@ -472,7 +522,7 @@ mqttClient.on('message', async (topic, message) => {
 
 // Flush InfluxDB writes periodically
 setInterval(() => {
-  writeApi.flush().catch(err => console.error('InfluxDB flush error:', err));
+  writeApi.flush().catch(err => console.error('InfluxDB flush error:', err.message));
 }, 5000);
 
 // Clean up stale equipment state cache entries periodically
@@ -482,7 +532,7 @@ setInterval(() => {
     const lastUpdateMs = new Date(stateData.lastUpdate).getTime();
     if (now - lastUpdateMs > equipmentStateCache.CACHE_TTL_MS) {
       equipmentStateCache.states.delete(key);
-      console.log(`[STATE] Evicted stale equipment: ${key}`);
+      console.debug(`[STATE] Evicted stale equipment: ${key}`);
     }
   }
 }, 60000); // Clean up every minute
@@ -516,31 +566,6 @@ function handleClientRequest(ws, request) {
       }));
       break;
 
-    case 'ask_claude':
-      // SECURITY: Validate question parameter
-      if (!request.question || typeof request.question !== 'string') {
-        ws.send(JSON.stringify({ type: 'error', error: 'Missing or invalid question' }));
-        return;
-      }
-      if (request.question.length > MAX_INPUT_LENGTH) {
-        ws.send(JSON.stringify({ type: 'error', error: 'Question too long (max 1000 characters)' }));
-        return;
-      }
-
-      aiModule.askClaudeWithContext(request.question).then(answer => {
-        ws.send(JSON.stringify({
-          type: 'claude_response',
-          data: { question: request.question, answer }
-        }));
-      }).catch(error => {
-        console.error('Error processing Claude question:', error.message);
-        ws.send(JSON.stringify({
-          type: 'claude_response',
-          data: { question: request.question, answer: 'Sorry, I encountered an error processing your question. Please try again.' }
-        }));
-      });
-      break;
-
     case 'update_anomaly_filter':
       // SECURITY: Validate filters parameter
       if (!request.filters || !Array.isArray(request.filters)) {
@@ -568,7 +593,7 @@ function handleClientRequest(ws, request) {
         data: { filters: factoryState.anomalyFilters }
       });
 
-      console.log(`🔍 Anomaly filters updated: ${validFilters.length} active rules`);
+      console.debug(`🔍 Anomaly filters updated: ${validFilters.length} active rules`);
       break;
       }
   }
@@ -699,7 +724,7 @@ app.post('/api/settings', express.json(), (req, res) => {
       data: factoryState.thresholdSettings
     });
 
-    console.log('[SETTINGS] Updated thresholds:', factoryState.thresholdSettings);
+    console.debug('[SETTINGS] Updated thresholds:', factoryState.thresholdSettings);
     res.json(factoryState.thresholdSettings);
   } catch (error) {
     console.error('Settings update error:', error);
@@ -903,7 +928,7 @@ app.get('/api/schema/measurements', async (req, res) => {
     } catch (refreshError) {
       // If refresh fails but we have cached data, use it and log the error
       if (schemaCache.measurements.size > 0) {
-        console.warn('Schema cache refresh failed, using stale cache:', refreshError.message);
+        console.debug('Schema cache refresh failed, using stale cache:', refreshError.message);
       } else {
         // No cached data available, propagate the error
         throw refreshError;
@@ -1595,6 +1620,183 @@ app.get('/api/cmms/health', async (req, res) => {
   }
 });
 
+// ============================================================================
+// TREND ANALYSIS ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/trends/downtime-pareto - Downtime Pareto analysis
+ * Query params: window (hourly|shift|daily|weekly), enterprise, limit
+ */
+app.get('/api/trends/downtime-pareto', async (req, res) => {
+  try {
+    const enterprise = validateEnterprise(req.query.enterprise) || 'ALL';
+    const window = trendsModule.validateTimeWindow(req.query.window);
+    const limit = parseInt(req.query.limit) || 10;
+
+    const result = await trendsModule.calculateDowntimePareto(enterprise, window, limit);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] Downtime Pareto error:', error);
+    res.status(500).json({
+      error: 'Failed to calculate downtime Pareto',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/trends/waste-predictive - Waste trends with predictions
+ * Query params: window (hourly|shift|daily|weekly), enterprise
+ */
+app.get('/api/trends/waste-predictive', async (req, res) => {
+  try {
+    const enterprise = validateEnterprise(req.query.enterprise) || 'ALL';
+    const window = trendsModule.validateTimeWindow(req.query.window);
+
+    const result = await trendsModule.calculateWasteTrend(enterprise, window);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] Waste predictive error:', error);
+    res.status(500).json({
+      error: 'Failed to calculate waste predictions',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/trends/oee-components - OEE component trends with predictions
+ * Query params: window (hourly|shift|daily|weekly), enterprise, component (availability|performance|quality|all)
+ */
+app.get('/api/trends/oee-components', async (req, res) => {
+  try {
+    const enterprise = validateEnterprise(req.query.enterprise) || 'ALL';
+    const window = trendsModule.validateTimeWindow(req.query.window);
+    const component = req.query.component || 'all';
+
+    const result = await trendsModule.calculateOEEComponentTrend(enterprise, window, component);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] OEE components error:', error);
+    res.status(500).json({
+      error: 'Failed to calculate OEE component trends',
+      message: error.message
+    });
+  }
+});
+
+// ============================================================================
+// SPC (STATISTICAL PROCESS CONTROL) ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/spc/measurements - Discover top problematic measurements for SPC
+ * Query params: enterprise, limit (default: 5)
+ */
+app.get('/api/spc/measurements', async (req, res) => {
+  try {
+    const enterprise = validateEnterprise(req.query.enterprise);
+    if (enterprise === null || enterprise === 'ALL') {
+      return res.status(400).json({
+        error: 'Invalid enterprise parameter. Must specify a single enterprise.'
+      });
+    }
+
+    const limit = parseInt(req.query.limit) || 5;
+    const measurements = await spcModule.discoverSPCMeasurements(enterprise, limit);
+
+    res.json({
+      measurements,
+      enterprise,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[API] SPC measurements discovery error:', error);
+    res.status(500).json({
+      error: 'Failed to discover SPC measurements',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/spc/data - Get SPC data for a specific measurement
+ * Query params: measurement, window (hourly|shift|daily|weekly), enterprise
+ */
+app.get('/api/spc/data', async (req, res) => {
+  try {
+    const measurement = req.query.measurement;
+    if (!measurement) {
+      return res.status(400).json({
+        error: 'Missing required parameter: measurement'
+      });
+    }
+
+    const enterprise = validateEnterprise(req.query.enterprise);
+    if (enterprise === null || enterprise === 'ALL') {
+      return res.status(400).json({
+        error: 'Invalid enterprise parameter. Must specify a single enterprise.'
+      });
+    }
+
+    const window = trendsModule.validateTimeWindow(req.query.window);
+    const result = await spcModule.querySPCData(measurement, window, enterprise);
+
+    res.json(result);
+  } catch (error) {
+    console.error('[API] SPC data error:', error);
+    res.status(500).json({
+      error: 'Failed to query SPC data',
+      message: error.message
+    });
+  }
+});
+
+// ============================================================================
+// PRODUCTION TRACKING ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/production/volume - Production volume vs target by line
+ * Query params: enterprise, window (hourly|shift|daily|weekly)
+ */
+app.get('/api/production/volume', async (req, res) => {
+  try {
+    const enterprise = validateEnterprise(req.query.enterprise) || 'ALL';
+    const window = trendsModule.validateTimeWindow(req.query.window);
+
+    const result = await productionModule.queryProductionVsTarget(enterprise, window);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] Production volume error:', error);
+    res.status(500).json({
+      error: 'Failed to query production volume',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/production/energy - Energy consumption by line
+ * Query params: enterprise, window (hourly|shift|daily|weekly)
+ */
+app.get('/api/production/energy', async (req, res) => {
+  try {
+    const enterprise = validateEnterprise(req.query.enterprise) || 'ALL';
+    const window = trendsModule.validateTimeWindow(req.query.window);
+
+    const result = await productionModule.queryEnergyConsumption(enterprise, window);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] Energy consumption error:', error);
+    res.status(500).json({
+      error: 'Failed to query energy consumption',
+      message: error.message
+    });
+  }
+});
+
 // NEW: Agent context endpoint - comprehensive data for agentic workflows
 // Uses Promise.allSettled() for resilience when InfluxDB or other services are unavailable
 app.get('/api/agent/context', async (req, res) => {
@@ -1732,7 +1934,7 @@ app.get('/api/schema/classifications', async (req, res) => {
     } catch (refreshError) {
       // If refresh fails but we have cached data, use it and log the error
       if (schemaCache.measurements.size > 0) {
-        console.warn('Schema cache refresh failed, using stale cache:', refreshError.message);
+        console.debug('Schema cache refresh failed, using stale cache:', refreshError.message);
       } else {
         // No cached data available, propagate the error
         throw refreshError;
@@ -1825,12 +2027,24 @@ app.get('/api/agent/status', (req, res) => {
   }
 });
 
+/**
+ * GET /api/agent/token-usage - Get token usage tracking for cost monitoring
+ */
+app.get('/api/agent/token-usage', (req, res) => {
+  res.json(factoryState.tokenUsage);
+});
+
 // =============================================================================
 // DEMO ENGINE ENDPOINTS
 // =============================================================================
 
 // Mount demo engine routes
 app.use('/api/demo', demoEngine.router);
+
+// Mount CESMII SM Profile routes
+if (CONFIG.cesmii.enabled) {
+  app.use('/api/cesmii', cesmiiRoutes.router);
+}
 
 // =============================================================================
 // STUB ENDPOINTS FOR LAMBDA TOOL COMPATIBILITY
@@ -2346,7 +2560,7 @@ const wss = new WebSocket.Server({ server, path: '/ws' });
 
 // WebSocket connection handler
 wss.on('connection', (ws) => {
-  console.log('👋 Frontend connected');
+  console.debug('👋 Frontend connected');
 
   ws.send(JSON.stringify({
     type: 'initial_state',
@@ -2357,7 +2571,9 @@ wss.on('connection', (ws) => {
       stats: factoryState.stats,
       insightsEnabled: !CONFIG.disableInsights,
       anomalyFilters: factoryState.anomalyFilters,
-      thresholdSettings: factoryState.thresholdSettings
+      thresholdSettings: factoryState.thresholdSettings,
+      cesmiiWorkOrders: factoryState.cesmiiWorkOrders.slice(-20).map(cesmiiHandler.sanitizeWorkOrderForBroadcast),
+      cesmiiStats: factoryState.cesmiiStats
     }
   }));
 
@@ -2378,7 +2594,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    console.log('👋 Frontend disconnected');
+    console.debug('👋 Frontend disconnected');
   });
 });
 
@@ -2394,6 +2610,13 @@ async function shutdown(signal) {
   try {
     // Stop agentic loop intervals/timeouts
     aiModule.stopAgenticLoop();
+
+    // Stop CESMII demo publisher if running
+    if (CONFIG.cesmii.enabled) {
+      const { stopDemoWorkOrders } = require('./lib/cesmii/demo-publisher');
+      stopDemoWorkOrders();
+      console.log('[CESMII] Demo publisher stopped');
+    }
 
     await writeApi.close();
     mqttClient.end();

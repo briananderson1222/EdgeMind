@@ -1,0 +1,52 @@
+{
+  "@context": {
+    "@vocab": "https://cesmii.org/smprofile/",
+    "profile": "https://cesmii.org/smprofile/profile",
+    "opc": "http://opcfoundation.org/UA/"
+  },
+  "@type": "FactoryInsightV1",
+  "profileDefinition": "https://github.com/Concept-Reply-US/EdgeMind/blob/main/lib/cesmii/profiles/FactoryInsightV1.jsonld",
+  "profile": {
+    "name": "FactoryInsightV1",
+    "version": "1.0.0",
+    "description": "EdgeMind AI-generated factory insight published as CESMII SM Profile",
+    "author": "EdgeMind / Concept Reply",
+    "attributes": [
+      {
+        "attributeName": "InsightId",
+        "dataType": "opc:Guid",
+        "description": "Unique insight identifier"
+      },
+      {
+        "attributeName": "Enterprise",
+        "dataType": "opc:String",
+        "description": "Enterprise that generated the insight"
+      },
+      {
+        "attributeName": "Summary",
+        "dataType": "opc:String",
+        "description": "Human-readable insight summary"
+      },
+      {
+        "attributeName": "Severity",
+        "dataType": "opc:String",
+        "description": "Severity level (info, warning, critical)"
+      },
+      {
+        "attributeName": "Category",
+        "dataType": "opc:String",
+        "description": "Insight category (trend, anomaly, recommendation)"
+      },
+      {
+        "attributeName": "GeneratedAt",
+        "dataType": "opc:UtcTime",
+        "description": "Timestamp when insight was generated"
+      },
+      {
+        "attributeName": "Confidence",
+        "dataType": "opc:Float",
+        "description": "AI confidence score (0.0 to 1.0)"
+      }
+    ]
+  }
+}

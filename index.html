@@ -27,9 +27,11 @@
     <link rel="stylesheet" href="css/demo.css">
     <link rel="stylesheet" href="css/coo-views.css">
     <link rel="stylesheet" href="css/plant-views.css">
+    <link rel="stylesheet" href="css/cesmii.css">
     <link rel="stylesheet" href="css/footer.css">
     <link rel="stylesheet" href="css/responsive.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body data-theme="coo">
@@ -102,6 +104,8 @@
             <button class="sub-nav__item" data-view="plant-oee-drilldown">OEE Drill-down</button>
             <button class="sub-nav__item" data-view="plant-equipment">Equipment Health</button>
             <button class="sub-nav__item" data-view="plant-alerts">Alerts & Work Orders</button>
+            <button class="sub-nav__item" data-view="plant-process-trends">Process Trends</button>
+            <button class="sub-nav__item" data-view="plant-cesmii">CESMII</button>
         </div>
 
         <!-- Demo Control Panel -->
@@ -408,7 +412,13 @@
 
         <div class="persona-view" data-view="coo-trends">
             <div class="view-header">
-                <h2 class="view-title">Trend Analysis</h2>
+                <h2 class="view-title">Predictive Trend Analysis</h2>
+                <div class="time-window-selector">
+                    <button class="window-btn" onclick="selectTimeWindow('hourly')">Hourly</button>
+                    <button class="window-btn active" onclick="selectTimeWindow('shift')">Shift (8h)</button>
+                    <button class="window-btn" onclick="selectTimeWindow('daily')">Daily</button>
+                    <button class="window-btn" onclick="selectTimeWindow('weekly')">Weekly</button>
+                </div>
             </div>
             <div class="trends-chart-grid">
                 <div class="trend-chart-container">
@@ -422,6 +432,22 @@
                 <div class="trend-chart-container">
                     <h3 class="chart-title">Equipment State Distribution</h3>
                     <canvas id="coo-equipment-chart"></canvas>
+                </div>
+                <!-- NEW: Downtime Pareto Chart -->
+                <div class="trend-chart-container chart-card-wide">
+                    <h3 class="chart-title">Downtime Pareto (Top Contributors)</h3>
+                    <canvas id="coo-downtime-pareto-chart"></canvas>
+                </div>
+                <!-- NEW: Waste Predictive Chart -->
+                <div class="trend-chart-container chart-card-wide">
+                    <h3 class="chart-title">Waste Trend with Predictions</h3>
+                    <div id="waste-prediction-alerts"></div>
+                    <canvas id="coo-waste-predictive-chart"></canvas>
+                </div>
+                <!-- NEW: OEE Components Chart -->
+                <div class="trend-chart-container chart-card-wide">
+                    <h3 class="chart-title">OEE Components (A × P × Q) with Predictions</h3>
+                    <canvas id="coo-oee-components-chart"></canvas>
                 </div>
             </div>
         </div>
@@ -516,6 +542,77 @@
                     <h3 class="section-title">Work Orders</h3>
                     <div id="work-orders-list" class="work-orders-list">
                         <div class="view-loading">Loading work orders...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Plant Manager: Process Trends View -->
+        <div class="persona-view" data-view="plant-process-trends">
+            <div class="view-header">
+                <h2 class="view-title">Process Trend Analysis</h2>
+                <select class="spc-dropdown" id="plant-process-enterprise">
+                    <option value="Enterprise A" selected>Enterprise A</option>
+                    <option value="Enterprise B">Enterprise B</option>
+                    <option value="Enterprise C">Enterprise C</option>
+                </select>
+            </div>
+
+            <div class="process-trends-grid">
+                <!-- SPC Chart (full width) -->
+                <div class="chart-card chart-card-full">
+                    <div class="chart-card-header">
+                        <h3 class="chart-card-title">Statistical Process Control (SPC)</h3>
+                        <select id="plant-spc-measurement-select" class="spc-dropdown">
+                            <option>Loading...</option>
+                        </select>
+                    </div>
+                    <div id="spc-cpk-badge" class="cpk-badge"></div>
+                    <canvas id="plant-spc-chart"></canvas>
+                </div>
+
+                <!-- Downtime Pareto (half width) -->
+                <div class="chart-card">
+                    <h3 class="chart-card-title">Downtime Contributors</h3>
+                    <canvas id="plant-downtime-chart"></canvas>
+                </div>
+
+                <!-- Production Volume (half width) -->
+                <div class="chart-card">
+                    <h3 class="chart-card-title">Production Volume vs Target</h3>
+                    <canvas id="plant-production-chart"></canvas>
+                </div>
+
+                <!-- Energy Consumption (full width) -->
+                <div class="chart-card chart-card-full">
+                    <h3 class="chart-card-title">Energy Consumption by Line</h3>
+                    <canvas id="plant-energy-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Plant Manager: CESMII Work Orders View -->
+        <div class="persona-view" data-view="plant-cesmii">
+            <div class="view-header">
+                <h2 class="view-title">CESMII SM Profiles</h2>
+                <div class="cesmii-stats-bar" id="cesmii-stats"></div>
+            </div>
+            <div class="cesmii-grid">
+                <div class="card" id="cesmii-work-orders-card">
+                    <div class="card-title">
+                        Work Orders
+                        <button class="expand-btn" data-card-id="cesmii-work-orders-card">&#x26F6;</button>
+                    </div>
+                    <div id="cesmii-wo-inner" class="cesmii-scroll">
+                        <div id="cesmii-work-orders-list">
+                            <div class="view-loading">Loading CESMII work orders...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">SM Profiles</div>
+                    <div id="cesmii-profiles-list">
+                        <div class="view-loading">Loading profiles...</div>
                     </div>
                 </div>
             </div>

@@ -6,6 +6,7 @@ import { addClaudeInsight, renderActiveFilters } from './insights.js';
 import { addMQTTMessageToStream } from './stream.js';
 import { topicToMeasurement, getEnterpriseParam } from './utils.js';
 import { fetchActiveSensorCount } from './dashboard-data.js';
+import { handleRealtimeWorkOrder } from './cesmii.js';
 
 /**
  * Schedule a reconnection attempt with exponential backoff
@@ -98,8 +99,6 @@ export function connectWebSocket() {
  * Handle different message types from backend
  */
 export function handleServerMessage(message) {
-    console.log('📨 Received:', message.type);
-
     switch (message.type) {
         case 'initial_state': {
             // Initial data when connecting
@@ -128,6 +127,11 @@ export function handleServerMessage(message) {
             // Load threshold settings from server
             if (message.data.thresholdSettings) {
                 state.thresholdSettings = message.data.thresholdSettings;
+            }
+
+            // Load CESMII work orders from server
+            if (message.data.cesmiiWorkOrders) {
+                state.cesmiiWorkOrders = message.data.cesmiiWorkOrders;
             }
 
             updateUI();
@@ -234,6 +238,11 @@ export function handleServerMessage(message) {
                 state.thresholdSettings = message.data;
                 console.log('[SETTINGS] Synced from server:', message.data);
             }
+            break;
+
+        case 'cesmii_work_order':
+            // Real-time CESMII work order
+            handleRealtimeWorkOrder(message.data);
             break;
     }
 }

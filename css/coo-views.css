@@ -190,6 +190,102 @@
     max-height: 280px;
 }
 
+/* === NEW: Time Window Selector === */
+
+.time-window-selector {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.window-btn {
+    padding: 8px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.window-btn:hover:not(.active) {
+    background: var(--bg-hover);
+    border-color: var(--accent-cyan);
+    transform: translateY(-1px);
+}
+
+.window-btn.active {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+    border-color: var(--accent-cyan);
+    font-weight: 600;
+}
+
+/* === NEW: Chart Card Wide === */
+
+.chart-card-wide {
+    grid-column: span 2;
+}
+
+/* === NEW: Prediction Alert Banners === */
+
+.prediction-alert {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    border-left: 4px solid;
+    backdrop-filter: blur(10px);
+    animation: slideInDown 0.3s ease;
+}
+
+.prediction-alert.warning {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: var(--accent-amber);
+    color: var(--accent-amber);
+}
+
+.prediction-alert.critical {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+}
+
+.prediction-alert .alert-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    stroke-width: 2;
+}
+
+.prediction-status-good {
+    padding: 10px 16px;
+    background: rgba(16, 185, 129, 0.15);
+    border-radius: 6px;
+    border-left: 4px solid var(--accent-green);
+    color: var(--accent-green);
+    text-align: center;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+    backdrop-filter: blur(10px);
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 
 /* === Agent Q&A View === */
 

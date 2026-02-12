@@ -70,6 +70,8 @@ import { init as initLineStatus, cleanup as cleanupLineStatus } from './plant-li
 import { init as initOEEDrilldown, cleanup as cleanupOEEDrilldown } from './plant-oee-drilldown.js';
 import { init as initEquipmentHealth, cleanup as cleanupEquipmentHealth, filterEquipment } from './plant-equipment.js';
 import { init as initAlerts, cleanup as cleanupAlerts, filterAlerts } from './plant-alerts.js';
+import { init as initPlantProcessTrends, cleanup as cleanupPlantProcessTrends } from './plant-process-trends.js';
+import { init as initCesmii, cleanup as cleanupCesmii } from './cesmii.js';
 
 // Expose all functions that are called from HTML onclick handlers to window
 window.switchPersona = switchPersona;
@@ -266,7 +268,9 @@ document.addEventListener('DOMContentLoaded', () => {
         'plant-line-status': cleanupLineStatus,
         'plant-oee-drilldown': cleanupOEEDrilldown,
         'plant-equipment': cleanupEquipmentHealth,
-        'plant-alerts': cleanupAlerts
+        'plant-alerts': cleanupAlerts,
+        'plant-process-trends': cleanupPlantProcessTrends,
+        'plant-cesmii': cleanupCesmii
     };
 
     // Watch for persona view changes to initialize views
@@ -302,6 +306,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         initEquipmentHealth();
                     } else if (view === 'plant-alerts') {
                         initAlerts();
+                    } else if (view === 'plant-process-trends') {
+                        initPlantProcessTrends();
+                    } else if (view === 'plant-cesmii') {
+                        initCesmii();
                     }
                 }
             }

@@ -52,7 +52,8 @@ export const state = {
         availabilityMin: 65,
         defectRateWarning: 2,
         defectRateCritical: 5
-    }
+    },
+    cesmiiWorkOrders: []
 };
 
 // Demo control state

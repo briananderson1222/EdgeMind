@@ -1,0 +1,62 @@
+{
+  "@context": {
+    "@vocab": "https://cesmii.org/smprofile/",
+    "profile": "https://cesmii.org/smprofile/profile",
+    "opc": "http://opcfoundation.org/UA/"
+  },
+  "@type": "WorkOrderV1",
+  "profileDefinition": "https://github.com/Concept-Reply-US/EdgeMind/blob/main/lib/cesmii/profiles/WorkOrderV1.jsonld",
+  "profile": {
+    "name": "WorkOrderV1",
+    "version": "1.0.0",
+    "description": "CESMII SM Profile for manufacturing work orders with feed ingredients",
+    "author": "EdgeMind / Concept Reply",
+    "attributes": [
+      {
+        "attributeName": "WorkOrderId",
+        "dataType": "opc:String",
+        "description": "Unique work order identifier"
+      },
+      {
+        "attributeName": "ProductName",
+        "dataType": "opc:String",
+        "description": "Name of the product being manufactured"
+      },
+      {
+        "attributeName": "Quantity",
+        "dataType": "opc:Double",
+        "description": "Quantity to produce"
+      },
+      {
+        "attributeName": "UnitOfMeasure",
+        "dataType": "opc:String",
+        "description": "Unit of measure for quantity"
+      },
+      {
+        "attributeName": "Status",
+        "dataType": "opc:String",
+        "description": "Work order status (New, InProgress, Complete, Cancelled)"
+      },
+      {
+        "attributeName": "Priority",
+        "dataType": "opc:Int32",
+        "description": "Priority level (1=highest)"
+      },
+      {
+        "attributeName": "StartTime",
+        "dataType": "opc:DateTime",
+        "description": "Scheduled start time"
+      },
+      {
+        "attributeName": "EndTime",
+        "dataType": "opc:DateTime",
+        "description": "Scheduled end time"
+      },
+      {
+        "attributeName": "Ingredients",
+        "dataType": "FeedIngredientV1[]",
+        "description": "Array of feed ingredients for this work order"
+      }
+    ]
+  }
+}

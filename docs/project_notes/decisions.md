@@ -251,10 +251,10 @@ This file logs architectural decisions (ADRs) with context and trade-offs.
 
 ---
 
-### ADR-008: AWS AgentCore Multi-Agent Architecture (2026-01-16)
+### ADR-008: AWS Bedrock AgentCore for On-Demand Intelligence (2026-01-16, revised 2026-02-09)
 
 **Context:**
-- Dashboard needs to answer complex analytical questions:
+- Dashboard needs to answer complex analytical questions interactively:
   1. "What is impacting my OEE?" - Root cause analysis
   2. "What is the status of my equipment?" - Equipment correlation with AI
   3. "Where is wastage coming from?" - Waste attribution
@@ -266,101 +266,96 @@ This file logs architectural decisions (ADRs) with context and trade-offs.
 - Enterprise C uses ISA-88 batch processing, not continuous OEE
 
 **Decision:**
-- Implement **AWS Bedrock Agents with multi-agent collaboration**
-- Deploy 4 specialized agents:
-  - **OEE Analyst Agent**: A×P×Q understanding, limiting factor identification
-  - **Equipment Health Agent**: State monitoring, downtime tracking, maintenance prediction
-  - **Waste Attribution Agent**: Defect patterns, root cause analysis by line
-  - **Batch Process Agent**: Enterprise C ISA-88 metrics, phase tracking, yield rates
-- Orchestrator agent routes questions to specialists
-- Triggered on-demand via `/api/agent/ask` endpoint (not continuous loop)
-- ChromaDB provides shared memory for agent context
+- Use **AWS Bedrock AgentCore** — a managed agentic platform (distinct from the older Bedrock Agents service)
+- Deploy agents as **Python code via AgentCore Runtime** using the Strands SDK
+- Expose backend REST APIs as agent tools via **AgentCore Gateway** (MCP protocol)
+- Secure tool access with **Workload Identity** and **Token Vault** (API key credential provider)
+- Agent invoked on-demand via `POST /api/agent/chat` with SSE streaming
+
+**AgentCore Components Used:**
+| Component | Usage |
+|-----------|-------|
+| **Runtime** | Serverless agent execution, direct code deploy (`PYTHON_3_10`), public network mode |
+| **Gateway** | Converts backend OpenAPI spec into MCP tools, IAM-authenticated |
+| **Workload Identity** | Gateway authenticates via `GetWorkloadAccessToken` |
+| **Token Vault** | API key credential provider for gateway → backend auth |
+| **Observability** | CloudWatch Logs + X-Ray tracing enabled |
+| **Memory** | Not used (`NO_MEMORY`) — session context managed in-app |
+
+**Current Agent: Chat** (`agent/chat/src/main.py`):
+- Built with **Strands SDK** + `BedrockAgentCoreApp` entrypoint
+- Connects to MCP Gateway for factory API tools (OEE, equipment, batch, etc.)
+- Optional **Bedrock Knowledge Base** integration for SOP retrieval
+- Supports IAM-authenticated MCP in production, plain HTTP locally
+- System prompt covers OEE (Enterprise A/B) and ISA-88 batch (Enterprise C)
+
+**Planned Agents** (not yet implemented):
+- **Troubleshoot Agent** — Equipment diagnostics with SOP-guided resolution
+- **Anomaly Agent** — Continuous trend analysis (may replace or augment the tiered loop in `lib/ai/index.js`)
 
 **Alternatives Considered:**
-- Enhanced Single-Agent Loop → Rejected: User chose multi-agent despite lower complexity option. Single-turn reasoning insufficient for complex questions.
-- Hybrid Simple Loop + On-Demand Agents → Rejected: User explicitly chose full AgentCore over incremental approach.
-
-**Rationale (from Quint FPF analysis):**
-1. **R_eff: 1.00** - All validation checks passed
-2. **Multi-agent GA (March 2025)**: AWS Blog confirms production-ready
-3. **CDK Support**: Both CfnAgent (L1) and Agent (L2) constructs available
-4. **Lambda Action Groups**: Well-documented tool execution pattern
-5. **Pricing**: Consumption-based, no per-invocation charge for InvokeAgent
+- Old Bedrock Agents (CfnAgent/Agent constructs, Lambda Action Groups, OpenAPI schemas) → Rejected: AgentCore is the newer, more flexible platform. Strands SDK + MCP Gateway replaces Lambda Action Groups entirely.
+- Enhanced Single-Agent Loop → Rejected: Single-turn reasoning insufficient for complex questions. AgentCore provides managed runtime, tool orchestration, and observability out of the box.
 
 **Consequences:**
-- ✅ Multi-step reasoning for complex questions
-- ✅ Specialized domain knowledge per agent
-- ✅ Tool use during analysis (InfluxDB queries, ChromaDB retrieval)
-- ✅ Scalable architecture for future question types
-- ⚠️ 4-5 day implementation timeline (tight for demo)
-- ⚠️ New infrastructure: Lambdas, IAM roles, OpenAPI schemas
-- ⚠️ Debugging complexity with multiple agents
+- ✅ Multi-step reasoning with tool use for complex questions
+- ✅ MCP Gateway auto-generates tools from OpenAPI spec (no manual Lambda wiring)
+- ✅ Managed serverless runtime — no container orchestration for agents
+- ✅ Built-in observability (CloudWatch, X-Ray) without extra infra
+- ✅ Workload Identity + Token Vault for secure, credential-free tool access
+- ✅ Streaming responses via SSE for real-time chat UX
+- ⚠️ Agent deployment via bash script (`Deployment Scripts/deploy-agents.sh`), not CDK
+- ⚠️ Only chat agent implemented; troubleshoot and anomaly agents still planned
+- ⚠️ AgentCore Memory not yet adopted — potential future enhancement
 
-**Implementation:**
-1. Create `infra/stacks/agentcore_stack.py` CDK stack
-2. Create Lambda Action Group functions (`lib/agentcore/tools.js` or Python)
-3. Define OpenAPI schemas for tools
-4. Add `/api/agent/ask` endpoint to `server.js`
-5. Build frontend chat panel for "Ask Agent" UI
+**Implementation (actual):**
+1. Agent source: `agent/chat/src/main.py` (Strands SDK + BedrockAgentCoreApp)
+2. Agent prompt: `agent/chat/src/prompt.yaml`
+3. Runtime client: `lib/agentcore/runtime.js` (dual-mode: AgentCore SDK or local HTTP)
+4. Agent ARNs stored in SSM: `/edgemind/agents/{chat|troubleshoot|anomaly}`
+5. Deployment: `Deployment Scripts/deploy-agents.sh` (creates IAM roles, Gateway, deploys agent)
+6. Backend endpoint: `POST /api/agent/chat` in `server.js`
+7. Frontend: `js/chat.js` (streaming chat panel)
 
-**Fallback:**
-If blocked, can pivot to enhanced-single-agent-loop in 1-2 days.
+**Correction Note (2026-02-09):**
+Original ADR incorrectly described this as "AWS Bedrock Agents with multi-agent collaboration" using Lambda Action Groups, CfnAgent/Agent CDK constructs, and an orchestrator + 4 specialist agents. That describes the older Bedrock Agents service. AWS Bedrock AgentCore is a separate, newer managed platform with its own Runtime, Gateway (MCP), Identity, Memory, Policy, and Observability components. The actual implementation uses AgentCore with the Strands SDK, not the older Bedrock Agents API.
 
-**DRR Reference:** `.quint/decisions/DRR-2026-01-16-aws-agentcore-multi-agent-architecture-for-edgemind-intelligence.md`
-
-**Revisit:** When AgentCore Memory becomes GA or if demo timeline requires simplification
+**Revisit:**
+- Add troubleshoot and anomaly agents when needed
+- Evaluate AgentCore Memory when ready to replace in-app session management
+- Consider AgentCore Policy for guardrails on tool invocations
+- Move deployment to CDK or GitHub Actions when stabilized
 
 ---
 
-### ADR-009: Cost Optimization - Haiku Specialists + Fargate Spot (2026-01-16)
+### ADR-009: Cost Optimization - Fargate Spot + Single Instance (2026-01-16, revised 2026-02-09)
 
 **Context:**
-- Initial AgentCore deployment used Claude Sonnet for all 5 agents
 - Fargate services (Backend, InfluxDB, ChromaDB) used On-Demand pricing
 - Backend ran 2 instances for HA (overkill for demo environment)
-- Estimated monthly cost: ~$250/month
+- AgentCore Runtime is pay-per-use (no idle cost), so agent compute isn't a Fargate concern
+- Estimated monthly cost before optimization: ~$135/month (Fargate + ALB + S3)
 
 **Decision:**
-- **AgentCore Model Selection:**
-  - Orchestrator: Keep **Claude Sonnet** (needs reasoning for routing decisions)
-  - 4 Specialists: Switch to **Claude Haiku** (~75% cheaper, sufficient for domain-specific tasks)
 - **Fargate Capacity Providers:**
   - InfluxDB + ChromaDB: Use **Fargate Spot** (70% cheaper, tolerable brief interruptions)
   - Backend: Keep On-Demand (user-facing, needs stability)
 - **Instance Count:**
   - Backend: Reduce from 2 to 1 (demo environment, HA unnecessary)
+- **AgentCore Model:** Chat agent model configured via `BEDROCK_MODEL_ID` env var in deploy script (currently Sonnet)
 
 **Alternatives Considered:**
-- All agents on Haiku → Rejected: Orchestrator needs better reasoning for routing
-- All agents on Sonnet → Rejected: Specialists don't need reasoning, just domain knowledge
 - Fargate Spot for Backend → Rejected: User-facing service, interruptions unacceptable
 - NAT Gateway elimination → Already optimized: using public subnets, no NAT Gateway
 
-**Cost Analysis:**
-
-| Component | Before | After | Savings |
-|-----------|--------|-------|---------|
-| Bedrock AI (50 q/day) | $115/mo | ~$35/mo | 70% |
-| Fargate Backend | $43.80/mo | $21.90/mo | 50% |
-| Fargate InfluxDB | $21.90/mo | ~$6.60/mo | 70% |
-| Fargate ChromaDB | $8.95/mo | ~$2.70/mo | 70% |
-| Other (ALB, S3, etc.) | $60/mo | $60/mo | 0% |
-| **TOTAL** | **~$250/mo** | **~$127/mo** | **~49%** |
-
 **Consequences:**
-- ✅ ~49% cost reduction (~$123/month saved)
-- ✅ Specialists still effective for domain-specific tasks
+- ✅ ~40% Fargate cost reduction from Spot pricing on databases
 - ✅ Spot interruptions tolerable for databases (EFS persistence)
-- ⚠️ Haiku may produce less nuanced responses than Sonnet
-- ⚠️ Spot interruptions cause brief database unavailability (~2 min recovery)
+- ✅ AgentCore Runtime is consumption-based — no idle compute cost for agents
 - ⚠️ Single backend instance means no HA during deployments
 
 **Implementation:**
 ```python
-# agentcore_stack.py
-ORCHESTRATOR_MODEL = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-SPECIALIST_MODEL = "anthropic.claude-3-5-haiku-20241022-v1:0"
-
 # database_stack.py - Fargate Spot
 capacity_provider_strategies=[
     ecs.CapacityProviderStrategy(capacity_provider="FARGATE_SPOT", weight=1),
@@ -368,8 +363,10 @@ capacity_provider_strategies=[
 ]
 ```
 
+**Correction Note (2026-02-09):**
+Original ADR referenced Orchestrator + 4 Specialist agents with Sonnet/Haiku model split. That was based on the incorrect multi-agent architecture from original ADR-008. Actual deployment uses AgentCore Runtime (pay-per-use), so agent model costs are consumption-based, not Fargate-based. Cost optimization is primarily about Fargate Spot for databases and right-sizing backend instances.
+
 **Revisit:**
-- If Haiku responses are insufficient, upgrade specific specialists to Sonnet
 - If Spot interruptions are problematic, switch databases back to On-Demand
 - For production (non-demo), consider 2+ backend instances
 
@@ -614,6 +611,111 @@ Replace the fixed 30-second analysis interval with a three-tier architecture:
 
 **Files Modified:** `lib/state.js`, `lib/ai/index.js`, `server.js`
 **Tests Added:** `lib/ai/__tests__/change-detection.test.js` (11 tests)
+
+---
+
+### ADR-017: Bidirectional CESMII SM Profile Support (2026-02-10)
+
+**Context:**
+- ProveIt! Conference 2026 (Feb 16-20) requires participants to publish data back to UNS (hard requirement)
+- CESMII SM Profiles are "should attempt" (strongly recommended) per CESMII collaboration section
+- eukodyne/cesmii reference implementation publishes WorkOrderV1 payloads to MQTT every 10 seconds
+- EdgeMind needs to both consume incoming SM Profile payloads AND publish its own data as SM Profile-compliant JSON-LD
+- Reference implementation is Python; EdgeMind is Node.js
+
+**Decision:**
+- Implement **bidirectional** CESMII SM Profile support:
+  - **Consumer (H1):** Detect, validate, and store incoming WorkOrderV1 JSON-LD payloads from MQTT
+  - **Publisher (H2):** Publish EdgeMind's own OEE reports and AI insights as custom SM Profile-compliant JSON-LD back to UNS
+- Port the Python SM Profile validator from eukodyne/cesmii to Node.js (~500-800 lines)
+- Custom profiles use **Method 2: JSON Schema on GitHub** (not CESMII Profile Designer tool)
+- New module: `lib/cesmii/` with validator, detector, publisher, and bundled profile schemas
+- Bundle existing profiles: WorkOrderV1.jsonld, FeedIngredientV1.jsonld
+- Define custom profiles: FactoryInsightV1.jsonld, OEEReportV1.jsonld
+- Include CESMII demo publisher fallback in demo engine (in case eukodyne publisher isn't running at conference)
+
+**Alternatives Considered:**
+- H3: Lightweight Semantic Layer (skip validation, just detect/display) → Rejected: lacks credibility at a conference focused on SM Profiles
+- H4: AI-Powered Profile Interpreter (feed profiles to Claude for semantic reasoning) → Deferred: AI output quality untested (R_eff=0.60), focus on core compliance first. Can be added post-conference.
+- Method 1: CESMII Profile Designer → Not used: JSON Schema on GitHub is simpler, officially supported, and sufficient for hackathon
+
+**Rationale (from FPF analysis):**
+1. **High confidence:** H1 R_eff=1.00, H2 R_eff=0.90 (weakest link: JSON Schema method documented but no ProveIt vendor example seen)
+2. **Publishing is mandatory:** ProveIt 2026 Sponsors Documentation requires publishing data back to UNS — not optional
+3. **Validator portable:** Python validator logic (OPC UA type checking) maps cleanly to Node.js — no native dependencies
+4. **MQTT already works:** Existing `#` subscription catches eukodyne topics; existing `conceptreply` user can publish
+5. **Demo fallback:** Self-contained publisher mitigates risk of eukodyne publisher not running at conference
+
+**Consequences:**
+- ✅ Full ProveIt 2026 compliance (consume from + publish to UNS)
+- ✅ CESMII collaboration requirement met (SM Profiles implemented)
+- ✅ Reusable CESMII module for future SM Profile integrations
+- ✅ Self-contained demo fallback for conference reliability
+- ⚠️ H4 (AI Profile Interpreter) deferred — misses differentiator opportunity
+- ⚠️ JSON Schema method is less formal than Profile Designer registration
+- ⚠️ Custom Node.js validator, not official CESMII .NET libraries
+
+**Implementation Plan:**
+1. Phase 1: `lib/cesmii/` module — profiles, validator, detector (Day 1-2)
+2. Phase 2: Consumer integration — MQTT interception, InfluxDB storage, REST endpoints (Day 2-3)
+3. Phase 3: Publisher — custom profiles, JSON-LD wrapper, MQTT publish (Day 3-4)
+4. Phase 4: Frontend work orders panel + demo fallback (Day 4-5)
+5. Phase 5: Integration testing + demo polish (Day 5-6)
+
+**DRR Reference:** `.fpf/decisions/DRR-001-cesmii-profiles.md`
+
+**Revisit:**
+- Add H4 (AI Profile Interpreter) post-conference as enhancement
+- Register custom profiles on CESMII Profile Designer (Method 1) if needed for formality
+- Expand validator for additional SM Profiles beyond WorkOrderV1
+
+---
+
+### ADR-DRR-001: CESMII SM Profile Integration (2026-02-11)
+- **Context:** ProveIt! Conference 2026 requires demonstration of CESMII SM Profile interoperability
+- **Decision:** Implemented bidirectional CESMII SM Profile support (H1: Consumer + H2: Publisher). H4 (AI Interpreter) deferred.
+- **Approach:** Native JSON-LD consumer with OPC UA type validation (13 types), plus publisher for OEE reports and AI insights
+- **Key choices:**
+  - Treat JSON-LD as plain JSON (no RDF library) -- sufficient for validation
+  - Profile detection via @type + (@context OR profileDefinition) heuristic
+  - Non-strict validation by default (store with warnings, don't reject)
+  - Publisher topics: `edgemind/oee/{enterprise}/{site}` and `edgemind/insights/{enterprise}`
+  - Demo publisher publishes to `Enterprise B/conceptreply/cesmii/WorkOrder`
+- **Trade-offs:** No full RDF/SPARQL support, but dramatically simpler implementation. Custom profiles follow CESMII Method 2 format.
+
+---
+
+### ADR-018: Bedrock Cost Optimization — Single-Shot + Nova Lite (2026-02-12)
+
+**Context:**
+- Tier 2/3 analysis used Claude Sonnet ($3/$15 per M tokens) for routine OEE summaries
+- Tool call loops caused 4-10 Bedrock invocations per analysis (token accumulation)
+- Haiku 4.5 and Claude 3.5 Haiku both failed with AWS Marketplace subscription errors
+- Need an accessible, cheap model for routine analysis without new Marketplace subscriptions
+
+**Decision:**
+- **Phase 1 (PR #51):** Pre-fetch all tool data before AI call, eliminating tool call loops (1 Bedrock call instead of 4-10). Increased Tier 3 interval from 15min to 30min. Added daily token budget circuit breaker.
+- **Phase 2 (DRR-002):** Switch tier model to Amazon Nova Lite (`us.amazon.nova-lite-v1:0`) — an Amazon-native model that requires no Marketplace subscription. 61x cheaper per call ($0.00007 vs $0.0044).
+- Code changes: `temperature: 0` in Nova inferenceConfig, token tracking handles both snake_case (Claude) and camelCase (Nova) field names.
+- Interactive Q&A stays on Claude Sonnet.
+
+**Alternatives Considered:**
+- Haiku 4.5 → Rejected: Marketplace subscription required (not subscribed, policy: don't subscribe)
+- Claude 3.5 Haiku → Rejected: Also requires Marketplace subscription
+- Converse API migration → Rejected: Unnecessary scope, existing Nova adapters already work
+- Nova Micro → Rejected: Higher quality risk without testing; Nova Lite already 61x cheaper
+
+**Consequences:**
+- ✅ 61x cost reduction per tier analysis call (~$0.10/month vs ~$6.60 with Sonnet)
+- ✅ No Marketplace subscription needed (Amazon-native model)
+- ✅ ~8 lines of code change total
+- ✅ Trivially reversible via `BEDROCK_TIER_MODEL_ID` env var
+- ⚠️ Analysis quality may be slightly less nuanced than Sonnet (acceptable for routine analysis)
+- ⚠️ N=1 test sample — production is the real test
+
+**FPF Reference:** `.fpf/decisions/DRR-002-nova-lite-tier-model.md`
+
+**Revisit:** If Nova Lite JSON quality proves insufficient (>20% parse failures), or if Haiku becomes subscribed in the AWS account.
 
 ---
 

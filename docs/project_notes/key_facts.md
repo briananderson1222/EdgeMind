@@ -251,8 +251,8 @@ const cleanPath = path.startsWith('/') ? path.slice(1) : path;
 
 - **Framework**: Jest
 - **Run**: `npm test`
-- **Test Suites**: 6 (validation, influx writer, OEE calculation x2, CMMS MaintainX, change detection)
-- **Total Tests**: 190
+- **Test Suites**: 11 (validation, influx writer, OEE calculation x2, CMMS MaintainX, change detection, CESMII validator, CESMII handler, CESMII publisher, trends, SPC)
+- **Total Tests**: 407
 
 ---
 
@@ -288,8 +288,11 @@ const cleanPath = path.startsWith('/') ? path.slice(1) : path;
 - **Uses AWS Bedrock** - NOT direct Anthropic API
 - **No ANTHROPIC_API_KEY needed** - Uses IAM role permissions
 - Backend uses `@aws-sdk/client-bedrock-runtime` which authenticates via IAM
-- Task role needs `bedrock:InvokeModel` permission on `anthropic.claude-*` models
-- Model ID configured in `lib/config.js` (e.g., `anthropic.claude-3-5-sonnet-20241022-v2:0`)
+- Task role needs `bedrock:InvokeModel` permission on `anthropic.claude-*` AND `amazon.nova-*` models
+- **Primary model** (interactive Q&A): Claude Sonnet (`us.anthropic.claude-sonnet-4-20250514-v1:0`)
+- **Tier model** (routine Tier 2/3 analysis): Amazon Nova Lite (`us.amazon.nova-lite-v1:0`) — 61x cheaper, no Marketplace subscription needed
+- Tier model configurable via `BEDROCK_TIER_MODEL_ID` env var
+- Nova uses camelCase token fields (`inputTokens`/`outputTokens`), Claude uses snake_case (`input_tokens`/`output_tokens`) — code handles both
 
 ⚠️ **Bedrock IAM Pattern (Cross-Region)**: Inference profiles route to models in different regions. The IAM policy must use wildcard region (`arn:aws:bedrock:*::foundation-model/...`) to allow cross-region inference. See `backend_stack.py` for the full pattern.
 
@@ -418,5 +421,75 @@ aws bedrock get-model-invocation-logging-configuration --region us-east-1
 # Check Fargate Spot savings
 aws ecs describe-services --cluster edgemind-prod-cluster --services edgemind-prod-influxdb
 ```
+
+## CESMII SM Profiles (ADR-017)
+
+### External References
+- **CESMII SM Profile reference repo**: https://github.com/eukodyne/cesmii
+- **ProveIt SM Profiles guide**: https://github.com/cesmii/ProveIt-SMProfiles
+- **FPF decision record**: `.fpf/decisions/DRR-001-cesmii-profiles.md`
+
+### MQTT Integration
+- **eukodyne publisher topic pattern**: `Enterprise B/{username}/cesmii/WorkOrder`
+- **Work order frequency**: Every 10 seconds, retained MQTT messages (QoS 1)
+- **Enterprise B topic count**: ~3,340 topics, 7-day simulation window
+
+### Bundled SM Profiles
+| Profile | Source | Status |
+|---------|--------|--------|
+| `WorkOrderV1.jsonld` | eukodyne/cesmii | Bundled |
+| `FeedIngredientV1.jsonld` | eukodyne/cesmii | Bundled |
+| `FactoryInsightV1.jsonld` | Custom (EdgeMind) | Planned |
+| `OEEReportV1.jsonld` | Custom (EdgeMind) | Planned |
+
+### Custom Profile Method
+- **Method 2: JSON Schema on GitHub** (not CESMII Profile Designer)
+- Custom profiles published as `.jsonld` files in GitHub repo
+- Can be registered on Profile Designer (Method 1) later if formality needed
+
+### CESMII Integration
+- **SM Profile validation:** 13 OPC UA types supported (Boolean, Int16-64, UInt16-64, Float, Double, String, DateTime, UtcTime, Guid)
+- **Profiles directory:** lib/cesmii/profiles/ (4 JSON-LD files)
+- **Consumer topics:** Subscribes to '#' (catches all CESMII payloads in MQTT stream)
+- **Publisher topics:** edgemind/oee/{enterprise}/{site}, edgemind/insights/{enterprise}
+- **Demo publisher topic:** Enterprise B/conceptreply/cesmii/WorkOrder
+- **CESMII_ENABLED:** Defaults to true (set to 'false' to disable)
+- **Validation mode:** Non-strict by default (stores with warnings). Set validationStrict: true in config for rejection.
+
+### Module Structure
+```
+lib/cesmii/
+├── detector.js      # CESMII SM Profile payload detection (JSON-LD)
+├── validator.js      # OPC UA type validation for SM Profile payloads
+├── handler.js        # MQTT message handling for CESMII payloads
+├── publisher.js      # Publish OEE/insights as SM Profile JSON-LD
+├── demo-publisher.js # Demo work order publisher for presentations
+├── routes.js         # REST API endpoints for CESMII data
+└── profiles/         # SM Profile JSON-LD definitions
+    ├── WorkOrderV1.jsonld
+    ├── FeedIngredientV1.jsonld
+    ├── FactoryInsightV1.jsonld
+    └── OEEReportV1.jsonld
+```
+
+---
+
+## ProveIt! Conference 2026
+
+### Presentation Format
+- **Duration**: 45 minutes (30-35 demo + 10-15 Q&A)
+- **Date**: Feb 16-20, 2026
+
+### 4 Mandatory Presentation Questions
+1. What problem are you solving?
+2. How did you solve it?
+3. How long did it take?
+4. How much did it cost?
+
+### CESMII Requirements
+- **Publishing to UNS**: HARD REQUIREMENT (per Sponsors Documentation)
+- **SM Profiles**: "Should attempt" (strongly recommended, per CESMII collaboration section)
+
+---
 
 <!-- Add new facts above this line -->

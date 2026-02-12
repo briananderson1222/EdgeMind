@@ -1,0 +1,67 @@
+{
+  "@context": {
+    "@vocab": "https://cesmii.org/smprofile/",
+    "profile": "https://cesmii.org/smprofile/profile",
+    "opc": "http://opcfoundation.org/UA/"
+  },
+  "@type": "OEEReportV1",
+  "profileDefinition": "https://github.com/Concept-Reply-US/EdgeMind/blob/main/lib/cesmii/profiles/OEEReportV1.jsonld",
+  "profile": {
+    "name": "OEEReportV1",
+    "version": "1.0.0",
+    "description": "EdgeMind OEE calculation report published as CESMII SM Profile",
+    "author": "EdgeMind / Concept Reply",
+    "attributes": [
+      {
+        "attributeName": "ReportId",
+        "dataType": "opc:Guid",
+        "description": "Unique report identifier"
+      },
+      {
+        "attributeName": "Enterprise",
+        "dataType": "opc:String",
+        "description": "Enterprise name"
+      },
+      {
+        "attributeName": "Site",
+        "dataType": "opc:String",
+        "description": "Site name"
+      },
+      {
+        "attributeName": "OEE",
+        "dataType": "opc:Float",
+        "description": "Overall Equipment Effectiveness (0-100%)"
+      },
+      {
+        "attributeName": "Availability",
+        "dataType": "opc:Float",
+        "description": "Availability component (0-100%)"
+      },
+      {
+        "attributeName": "Performance",
+        "dataType": "opc:Float",
+        "description": "Performance component (0-100%)"
+      },
+      {
+        "attributeName": "Quality",
+        "dataType": "opc:Float",
+        "description": "Quality component (0-100%)"
+      },
+      {
+        "attributeName": "CalculationTier",
+        "dataType": "opc:String",
+        "description": "OEE calculation tier used (tier1, tier2, tier3)"
+      },
+      {
+        "attributeName": "Confidence",
+        "dataType": "opc:Float",
+        "description": "Calculation confidence (0.0 to 1.0)"
+      },
+      {
+        "attributeName": "CalculatedAt",
+        "dataType": "opc:UtcTime",
+        "description": "Timestamp when OEE was calculated"
+      }
+    ]
+  }
+}

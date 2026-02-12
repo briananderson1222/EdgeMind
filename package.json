@@ -12,7 +12,9 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/lib/**/__tests__/**/*.test.js"]
+    "testMatch": [
+      "**/lib/**/__tests__/**/*.test.js"
+    ]
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agent-runtime": "^3.982.0",
@@ -35,7 +37,8 @@
     "eslint-config-prettier": "^10.1.8",
     "jest": "^30.2.0",
     "nodemon": "^3.0.2",
-    "prettier": "^3.8.1"
+    "prettier": "^3.8.1",
+    "supertest": "^7.2.2"
   },
   "overrides": {
     "fast-xml-parser": "5.3.4"

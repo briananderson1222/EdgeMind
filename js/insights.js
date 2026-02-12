@@ -29,10 +29,35 @@ export function createInsightElement(insight) {
     const escapedConfidence = escapeHtml(String(insight.confidence || 'N/A'));
     const escapedSeverity = escapeHtml(String(insight.severity));
 
+    // Extract model name and tier for badge
+    let modelTierBadge = '';
+    if (insight.model || insight.analysisTier) {
+        let modelName = 'Claude'; // default fallback
+        if (insight.model) {
+            const model = insight.model.toLowerCase();
+            if (model.includes('nova-lite')) {
+                modelName = 'Nova Lite';
+            } else if (model.includes('nova-micro')) {
+                modelName = 'Nova Micro';
+            } else if (model.includes('nova')) {
+                modelName = 'Nova';
+            } else if (model.includes('sonnet')) {
+                modelName = 'Sonnet';
+            } else if (model.includes('haiku')) {
+                modelName = 'Haiku';
+            } else if (model.includes('opus')) {
+                modelName = 'Opus';
+            }
+        }
+        const escapedModelName = escapeHtml(modelName);
+        const tierText = insight.analysisTier ? ` · Tier ${escapeHtml(String(insight.analysisTier))}` : '';
+        modelTierBadge = `<span style="color: var(--accent-cyan, #00d4ff); opacity: 0.8">${escapedModelName}${tierText}</span> · `;
+    }
+
     insightEl.innerHTML = `
         <div class="insight-text">${escapedInsightText}</div>
         <div class="insight-meta">
-            ${anomalyInfo}Confidence: ${escapedConfidence} •
+            ${modelTierBadge}${anomalyInfo}Confidence: ${escapedConfidence} •
             Priority: ${escapedSeverity} •
             Analyzed ${dataInfo} •
             ${insight.timestamp ? new Date(insight.timestamp).toLocaleTimeString() : ''}
